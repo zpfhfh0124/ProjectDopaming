@@ -486,29 +486,8 @@ namespace Oripa.UI
 
             BuildCurrency(top, withThemeButton ? UIKit.Px(64 + 8) : 0f);
 
-            // .bal : 둥근 알약 모양, 포인트 + 충전 버튼
-            var balRow = UIKit.Rect("BalanceRow", page);
-            balRow.Layout(UIKit.Px(52));
-            var bal = UIKit.BorderBox(balRow, "Balance", Theme.Surface, Theme.Border, UIKit.Px(26));
-            var balOuter = (RectTransform)bal.transform.parent;
-            balOuter.anchorMin = new Vector2(0, 0);
-            balOuter.anchorMax = new Vector2(0, 1);
-            balOuter.pivot = new Vector2(0, 0.5f);
-            balOuter.offsetMin = Vector2.zero;
-            balOuter.offsetMax = new Vector2(UIKit.Px(370), 0);
-
-            pointsText = UIKit.Label(bal.transform, "0 pt", UIKit.Fs(15), Theme.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
-            pointsText.name = "PointsText";
-            pointsText.rectTransform.Stretch(UIKit.Px(14), 0, UIKit.Px(210), 0);
-
-            chargeButton = UIKit.Button(bal.transform, "+1,000,000pt 충전(데모)", null, UIKit.Fs(14));
-            chargeButton.name = "ChargeButton";
-            var crt = (RectTransform)chargeButton.transform;
-            crt.anchorMin = new Vector2(1, 0);
-            crt.anchorMax = new Vector2(1, 1);
-            crt.pivot = new Vector2(1, 0.5f);
-            crt.offsetMin = new Vector2(-UIKit.Px(204), UIKit.Px(6));
-            crt.offsetMax = new Vector2(-UIKit.Px(6), -UIKit.Px(6));
+            // 포인트 줄 자리에 배너 (이미지는 Scene에서 Banner의 Source Image에 넣는다)
+            BuildBanner(page);
         }
 
         /// <summary>
@@ -588,6 +567,48 @@ namespace Oripa.UI
                 if (r != null) return r;
             }
             return null;
+        }
+#endif
+
+        /// <summary>배너 권장 크기 (캔버스 단위 = 1080 폭 기준 픽셀). 폭은 본문 폭, 3:1 비율.</summary>
+        public static Vector2 BannerSize => new Vector2(ContentWidth, Mathf.Round(ContentWidth / 3f));
+
+        /// <summary>배너 자리: 둥근 회색 Image + 안내 글자. 이미지를 넣으면 안내 글자(BannerHint)는 지우면 된다.</summary>
+        static Image BuildBanner(Transform parent)
+        {
+            var size = BannerSize;
+            var banner = UIKit.Panel(parent, "Banner", Theme.Border, UIKit.Px(14));
+            banner.raycastTarget = false;
+            banner.preserveAspect = false;
+            banner.Layout(size.y);
+            var hint = UIKit.Label(banner.transform, $"배너 ({size.x:0} x {size.y:0})", UIKit.Fs(14), Theme.Muted, TextAnchor.MiddleCenter);
+            hint.name = "BannerHint";
+            return banner;
+        }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// 에디터 전용: 구운 UI의 포인트 줄(BalanceRow)을 지우고 같은 자리에 배너를 넣는다.
+        /// 반환: (지울 BalanceRow, 새 Banner). 지우기는 호출하는 쪽이 Undo로 처리한다.
+        /// </summary>
+        public GameObject ReplaceBalanceWithBanner(out GameObject balanceRow)
+        {
+            balanceRow = null;
+            if (!baked || canvasRoot == null) return null;
+            var row = FindChildRecursive(canvasRoot, "BalanceRow");
+            if (row == null || FindChildRecursive(canvasRoot, "Banner") != null) return null;
+            balanceRow = row.gameObject;
+            LoadData();
+            var banner = BuildBanner(row.parent);
+            banner.transform.SetSiblingIndex(row.GetSiblingIndex());
+            UIKit.ApplyMissingFonts(banner.transform);
+            return banner.gameObject;
+        }
+
+        public void ForgetBalanceReferences()
+        {
+            pointsText = null;
+            chargeButton = null;
         }
 #endif
 
