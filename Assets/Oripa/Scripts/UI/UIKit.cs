@@ -379,9 +379,15 @@ namespace Oripa.UI
         public static Texture2D LoadPackArt(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
-            if (artCache.TryGetValue(name, out var tex)) return tex;
-            tex = Resources.Load<Texture2D>("PackArt/" + name);
-            artCache[name] = tex;
+            return LoadTexture("PackArt/" + name);
+        }
+
+        /// <summary>Resources 아래 경로(확장자 없이)의 이미지를 읽는다. 없으면 null.</summary>
+        public static Texture2D LoadTexture(string path)
+        {
+            if (artCache.TryGetValue(path, out var tex) && tex != null) return tex;
+            tex = Resources.Load<Texture2D>(path);
+            artCache[path] = tex;
             return tex;
         }
     }
