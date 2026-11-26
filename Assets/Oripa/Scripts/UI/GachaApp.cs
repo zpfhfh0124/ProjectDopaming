@@ -573,36 +573,109 @@ namespace Oripa.UI
         /// <summary>배너 권장 크기 (캔버스 단위 = 1080 폭 기준 픽셀). 폭은 본문 폭, 3:1 비율.</summary>
         public static Vector2 BannerSize => new Vector2(ContentWidth, Mathf.Round(ContentWidth / 3f));
 
-        /// <summary>배너 자리: 둥근 회색 Image + 안내 글자. 이미지를 넣으면 안내 글자(BannerHint)는 지우면 된다.</summary>
-        static Image BuildBanner(Transform parent)
+        public const int DefaultBannerPages = 3;
+
+        /// <summary>
+        /// 가로로 넘기는 배너: Banner(둥근 테두리 + BannerCarousel) > Pages > Page1..N (각각 Image 한 장), Dots (Play 때 점 생성).
+        /// 각 Page의 Source Image에 배너 그림을 넣고, 안내 글자(PageHint)는 지우면 된다.
+        /// keepSprite: 첫 페이지에 넣을 그림 (예전 단일 배너에 넣어 둔 것).
+        /// </summary>
+        static RectTransform BuildBanner(Transform parent, Sprite keepSprite = null)
         {
             var size = BannerSize;
-            var banner = UIKit.Panel(parent, "Banner", Theme.Border, UIKit.Px(14));
-            banner.raycastTarget = false;
-            banner.preserveAspect = false;
-            banner.Layout(size.y);
-            var hint = UIKit.Label(banner.transform, $"배너 ({size.x:0} x {size.y:0})", UIKit.Fs(14), Theme.Muted, TextAnchor.MiddleCenter);
-            hint.name = "BannerHint";
-            return banner;
+            var root = UIKit.Panel(parent, "Banner", Theme.Border, UIKit.Px(14));
+            root.Layout(size.y);
+            root.gameObject.AddComponent<Mask>().showMaskGraphic = true;
+
+            var pages = UIKit.Rect("Pages", root.transform);
+            pages.anchorMin = new Vector2(0, 0);
+            pages.anchorMax = new Vector2(0, 1);
+            pages.pivot = new Vector2(0, 0.5f);
+            pages.offsetMin = Vector2.zero;
+            pages.offsetMax = Vector2.zero;
+            var h = pages.gameObject.AddComponent<HorizontalLayoutGroup>();
+            h.spacing = 0;
+            h.childControlWidth = true;
+            h.childControlHeight = true;
+            h.childForceExpandWidth = false;
+            h.childForceExpandHeight = true;
+            pages.gameObject.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            Color[] tints = { Theme.Hex("#c9d3f5"), Theme.Hex("#f5cde0"), Theme.Hex("#cdeedd") };
+            for (int i = 0; i < DefaultBannerPages; i++)
+            {
+                var pageRt = UIKit.Rect("Page" + (i + 1), pages);
+                pageRt.Layout(-1, size.x);
+                var img = pageRt.gameObject.AddComponent<Image>();
+                img.color = tints[i % tints.Length];
+                if (i == 0 && keepSprite != null)
+                {
+                    img.sprite = keepSprite;
+                    img.color = Color.white;
+                }
+                else
+                {
+                    var hint = UIKit.Label(pageRt, $"배너 {i + 1}  ({size.x:0} x {size.y:0})", UIKit.Fs(14), Theme.Muted, TextAnchor.MiddleCenter);
+                    hint.name = "PageHint";
+                }
+            }
+
+            var dots = UIKit.Rect("Dots", root.transform);
+            dots.anchorMin = new Vector2(0, 0);
+            dots.anchorMax = new Vector2(1, 0);
+            dots.pivot = new Vector2(0.5f, 0);
+            dots.offsetMin = new Vector2(0, UIKit.Px(8));
+            dots.offsetMax = new Vector2(0, UIKit.Px(8 + 7));
+            var dh = dots.gameObject.AddComponent<HorizontalLayoutGroup>();
+            dh.spacing = UIKit.Px(6);
+            dh.childAlignment = TextAnchor.MiddleCenter;
+            dh.childControlWidth = true;
+            dh.childControlHeight = true;
+            dh.childForceExpandWidth = false;
+            dh.childForceExpandHeight = false;
+
+            var carousel = root.gameObject.AddComponent<BannerCarousel>();
+            carousel.content = pages;
+            carousel.viewport = root.rectTransform;
+            carousel.horizontal = true;
+            carousel.vertical = false;
+            carousel.movementType = ScrollRect.MovementType.Clamped;
+            carousel.inertia = true;
+            carousel.decelerationRate = 0.135f;
+            carousel.scrollSensitivity = 0f;
+            carousel.dots = dots;
+            return root.rectTransform;
         }
 
 #if UNITY_EDITOR
         /// <summary>
-        /// 에디터 전용: 구운 UI의 포인트 줄(BalanceRow)을 지우고 같은 자리에 배너를 넣는다.
-        /// 반환: (지울 BalanceRow, 새 Banner). 지우기는 호출하는 쪽이 Undo로 처리한다.
+        /// 에디터 전용: 구운 UI에 가로 스크롤 배너를 넣는다.
+        /// 포인트 줄(BalanceRow)이 있으면 그 자리에, 예전 단일 배너(Banner, 스크롤 없음)가 있으면 그것을 바꾼다
+        /// (예전 배너에 넣어 둔 그림은 첫 페이지로 옮긴다).
+        /// old: 지울 오브젝트 (호출하는 쪽이 Undo로 지운다). 이미 가로 스크롤 배너면 null.
         /// </summary>
-        public GameObject ReplaceBalanceWithBanner(out GameObject balanceRow)
+        public GameObject InstallBannerCarousel(out GameObject old)
         {
-            balanceRow = null;
+            old = null;
             if (!baked || canvasRoot == null) return null;
-            var row = FindChildRecursive(canvasRoot, "BalanceRow");
-            if (row == null || FindChildRecursive(canvasRoot, "Banner") != null) return null;
-            balanceRow = row.gameObject;
+            var banner = FindChildRecursive(canvasRoot, "Banner");
+            if (banner != null && banner.GetComponent<BannerCarousel>() != null) return null;
+            var target = banner != null ? banner : FindChildRecursive(canvasRoot, "BalanceRow");
+            if (target == null) return null;
+
+            Sprite keep = null;
+            if (banner != null)
+            {
+                var img = banner.GetComponent<Image>();
+                if (img != null && img.sprite != null && img.sprite != UIKit.Rounded) keep = img.sprite;
+            }
+
+            old = target.gameObject;
             LoadData();
-            var banner = BuildBanner(row.parent);
-            banner.transform.SetSiblingIndex(row.GetSiblingIndex());
-            UIKit.ApplyMissingFonts(banner.transform);
-            return banner.gameObject;
+            var carousel = BuildBanner(target.parent, keep);
+            carousel.SetSiblingIndex(target.GetSiblingIndex());
+            UIKit.ApplyMissingFonts(carousel);
+            return carousel.gameObject;
         }
 
         public void ForgetBalanceReferences()

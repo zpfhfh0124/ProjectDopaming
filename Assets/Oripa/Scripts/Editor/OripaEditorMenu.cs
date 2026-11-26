@@ -123,33 +123,34 @@ namespace Oripa.EditorTools
             Debug.Log("[Oripa] Header 오른쪽 위에 코인 표시를 추가했습니다. 위치를 조정하고 씬을 저장(Ctrl+S)하세요.");
         }
 
-        [MenuItem("Oripa/구운 UI: 포인트 줄을 배너로 바꾸기", priority = 14)]
-        public static void ReplaceBalanceWithBanner()
+        [MenuItem("Oripa/구운 UI: 가로 스크롤 배너 넣기", priority = 14)]
+        public static void InstallBanner()
         {
             var app = FindApp();
             if (app == null) return;
             if (!app.IsBaked)
             {
-                Debug.LogWarning("[Oripa] 구운 UI가 없습니다. 코드 생성 방식에는 이미 배너 자리가 들어 있어요.");
+                Debug.LogWarning("[Oripa] 구운 UI가 없습니다. 코드 생성 방식에는 이미 가로 스크롤 배너가 들어 있어요.");
                 return;
             }
-            Undo.RegisterCompleteObjectUndo(app, "Oripa 배너로 바꾸기");
-            var banner = app.ReplaceBalanceWithBanner(out var balanceRow);
+            Undo.RegisterCompleteObjectUndo(app, "Oripa 가로 스크롤 배너");
+            var banner = app.InstallBannerCarousel(out var old);
             if (banner == null)
             {
-                Debug.LogWarning("[Oripa] BalanceRow를 찾지 못했거나 이미 Banner가 있습니다.");
+                Debug.LogWarning("[Oripa] 이미 가로 스크롤 배너가 있거나, 바꿀 BalanceRow / Banner를 찾지 못했습니다.");
                 return;
             }
-            Undo.RegisterCreatedObjectUndo(banner, "Oripa 배너로 바꾸기");
-            app.ForgetBalanceReferences();
-            Undo.DestroyObjectImmediate(balanceRow);
+            Undo.RegisterCreatedObjectUndo(banner, "Oripa 가로 스크롤 배너");
+            if (old.name == "BalanceRow") app.ForgetBalanceReferences();
+            Undo.DestroyObjectImmediate(old);
             EditorUtility.SetDirty(app);
             EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
             app.RefreshPreview();
             Selection.activeGameObject = banner;
             var size = GachaApp.BannerSize;
-            Debug.Log($"[Oripa] 포인트 줄을 지우고 배너 자리를 넣었습니다 ({size.x:0} x {size.y:0}). " +
-                      "이미지를 Sprite로 가져와 Banner의 Source Image에 넣고, BannerHint 글자는 지우세요. 씬을 저장(Ctrl+S)하세요.");
+            Debug.Log($"[Oripa] 가로 스크롤 배너를 넣었습니다 (페이지 {size.x:0} x {size.y:0}). " +
+                      "Banner > Pages > Page1~3 의 Source Image에 그림(Sprite)을 넣고 PageHint 글자는 지우세요. " +
+                      "페이지를 늘리려면 Page를 복제(Ctrl+D)하면 됩니다. 씬을 저장(Ctrl+S)하세요.");
         }
 
         [MenuItem("Oripa/테스트: 포인트 1,000,000 충전 (Play 중)", priority = 30)]
