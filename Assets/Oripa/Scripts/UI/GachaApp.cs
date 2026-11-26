@@ -703,11 +703,12 @@ namespace Oripa.UI
             }
         }
 
-        /// <summary>배너 아래 구분선 두 줄.</summary>
+        /// <summary>배너 아래 구분선 두 줄 (화면 양 끝까지).</summary>
         static RectTransform BuildDividers(Transform parent)
         {
             var box = UIKit.Rect("Dividers", parent);
             UIKit.Vertical(box.gameObject, new RectOffset(0, 0, 0, 0), UIKit.Px(3));
+            box.gameObject.AddComponent<FullBleed>();   // 화면 양 끝까지
             for (int i = 0; i < 2; i++)
             {
                 var line = UIKit.Rect("Line" + (i + 1), box);
@@ -748,11 +749,16 @@ namespace Oripa.UI
             if (banner == null || banner.GetComponent<BannerCarousel>() == null) return false;
             ApplyBannerPeek((RectTransform)banner);
 
-            if (FindChildRecursive(canvasRoot, "Dividers") == null)
+            var dividers = FindChildRecursive(canvasRoot, "Dividers");
+            if (dividers == null)
             {
                 var d = BuildDividers(banner.parent);
                 d.SetSiblingIndex(banner.GetSiblingIndex() + 1);
                 newDividers = d.gameObject;
+            }
+            else if (dividers.GetComponent<FullBleed>() == null)
+            {
+                dividers.gameObject.AddComponent<FullBleed>();
             }
 
             var note = FindChildRecursive(canvasRoot, "Note");
