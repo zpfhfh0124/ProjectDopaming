@@ -201,6 +201,29 @@ namespace Oripa.EditorTools
                       "탭을 늘리려면 Tab을 복제(Ctrl+D)하세요. 처음 선택된 탭은 TabBar의 CategoryTabs > Selected. 씬을 저장(Ctrl+S)하세요.");
         }
 
+        [MenuItem("Oripa/구운 UI: 타이틀과 탭 줄 위에 고정", priority = 17)]
+        public static void InstallStickyTop()
+        {
+            var app = FindApp();
+            if (app == null) return;
+            if (!app.IsBaked)
+            {
+                Debug.LogWarning("[Oripa] 구운 UI가 없습니다. 코드 생성 방식에는 이미 들어 있어요.");
+                return;
+            }
+            Undo.RegisterCompleteObjectUndo(app, "Oripa 위에 고정");
+            bool ok = app.InstallStickyTop(out var msg);
+            if (!ok)
+            {
+                Debug.LogWarning("[Oripa] " + msg);
+                return;
+            }
+            EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
+            if (!string.IsNullOrEmpty(msg)) Debug.LogWarning("[Oripa] " + msg);
+            Debug.Log("[Oripa] 타이틀은 항상 맨 위에, 탭 줄은 스크롤하다 타이틀 바로 밑에 붙도록 했습니다 (Play에서 확인). " +
+                      "Header와 Dividers 안의 내용은 이제 각각 Sticky 아래에 있습니다. 씬을 저장(Ctrl+S)하세요.");
+        }
+
         [MenuItem("Oripa/테스트: 포인트 1,000,000 충전 (Play 중)", priority = 30)]
         public static void ChargeInPlay()
         {

@@ -374,7 +374,10 @@ namespace Oripa.UI
             modalLayer = UIKit.Rect("Modals", canvasRoot).Stretch();
 
             BuildHeader(page, !forBake);
-            BuildDividers(page);
+            var dividers = BuildDividers(page);
+            var headerSticky = MakeSticky((RectTransform)page.Find("Header"), null, false);
+            MakeSticky(dividers, headerSticky, false);
+            MakeOverlay(modalLayer, 10, false);
 
             // .note (화면 양 끝까지)
             var note = UIKit.BorderBox(page, "Note", Theme.Bg, Theme.Border, UIKit.Px(8));
@@ -551,9 +554,10 @@ namespace Oripa.UI
             if (!baked || canvasRoot == null) return null;
             var header = FindChildRecursive(canvasRoot, "Header");
             if (header == null) return null;
-            if (header.Find("Currency") != null) return null;
+            if (FindChildRecursive(header, "Currency") != null) return null;
             LoadData();
-            var row = BuildCurrency(header, 0f);
+            var headerSticky = header.Find("Sticky");
+            var row = BuildCurrency(headerSticky != null ? headerSticky : header, 0f);
             UIKit.ApplyMissingFonts(row);
             // 숫자는 RefreshPreview / Play 때 Render가 채운다 (여기서 Render하면 미리보기 카드가 씬에 저장될 수 있음).
             return row.gameObject;
@@ -812,6 +816,128 @@ namespace Oripa.UI
             }
         }
 
+        // ── 위에 붙는 줄 (타이틀, 탭 줄) ──
+        // undo: 에디터에서 구운 씬을 바꿀 때 Ctrl+Z로 되돌릴 수 있게 기록한다.
+
+        static T AddComp<T>(GameObject go, bool undo) where T : Component
+        {
+#if UNITY_EDITOR
+            if (undo && !Application.isPlaying) return UnityEditor.Undo.AddComponent<T>(go);
+#endif
+            return go.AddComponent<T>();
+        }
+
+        static void Reparent(Transform t, Transform parent, bool undo)
+        {
+#if UNITY_EDITOR
+            if (undo && !Application.isPlaying)
+            {
+                UnityEditor.Undo.SetTransformParent(t, parent, "Oripa 위에 고정");
+                return;
+            }
+#endif
+            t.SetParent(parent, false);
+        }
+
+        static void Kill(Component c, bool undo)
+        {
+            if (c == null) return;
+#if UNITY_EDITOR
+            if (undo && !Application.isPlaying)
+            {
+                UnityEditor.Undo.DestroyObjectImmediate(c);
+                return;
+            }
+#endif
+            DestroyComponent(c);
+        }
+
+        /// <summary>그 위에 따로 그려지는 캔버스 (스크롤 내용 위, 모달 아래 순서를 맞춘다).</summary>
+        static void MakeOverlay(RectTransform rt, int order, bool undo)
+        {
+            if (rt == null) return;
+            var c = rt.GetComponent<Canvas>();
+            if (c == null) c = AddComp<Canvas>(rt.gameObject, undo);
+            c.overrideSorting = true;
+            c.sortingOrder = order;
+            if (rt.GetComponent<GraphicRaycaster>() == null) AddComp<GraphicRaycaster>(rt.gameObject, undo);
+        }
+
+        /// <summary>
+        /// target의 내용을 자식 Sticky로 옮기고 StickyInScroll을 붙인다. above가 없으면 지금 자리(페이지 위 여백)에 고정,
+        /// 있으면 그 줄 바로 밑에 붙는다. 뒤가 비치지 않게 배경(StickyBg)을 깐다. 이미 되어 있으면 그대로 돌려준다.
+        /// </summary>
+        static StickyInScroll MakeSticky(RectTransform target, StickyInScroll above, bool undo)
+        {
+            if (target == null) return null;
+            var existing = target.GetComponent<StickyInScroll>();
+            if (existing != null) return existing;
+
+            // 레이아웃 그룹이 있으면(구분선 묶음) Sticky로 옮기고, 바깥은 높이만 지킨다.
+            var group = target.GetComponent<VerticalLayoutGroup>();
+            float height = target.rect.height;
+            if (group != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(target);
+                height = LayoutUtility.GetPreferredHeight(target);
+            }
+
+            var sticky = UIKit.Rect("Sticky", target).Stretch();
+#if UNITY_EDITOR
+            if (undo && !Application.isPlaying) UnityEditor.Undo.RegisterCreatedObjectUndo(sticky.gameObject, "Oripa 위에 고정");
+#endif
+            var kids = new System.Collections.Generic.List<Transform>();
+            for (int i = 0; i < target.childCount; i++)
+                if (target.GetChild(i) != sticky) kids.Add(target.GetChild(i));
+            foreach (var k in kids) Reparent(k, sticky, undo);
+
+            if (group != null)
+            {
+                var g = AddComp<VerticalLayoutGroup>(sticky.gameObject, undo);
+                g.padding = new RectOffset(group.padding.left, group.padding.right, group.padding.top, group.padding.bottom);
+                g.spacing = group.spacing;
+                g.childAlignment = group.childAlignment;
+                g.childControlWidth = group.childControlWidth;
+                g.childControlHeight = group.childControlHeight;
+                g.childForceExpandWidth = group.childForceExpandWidth;
+                g.childForceExpandHeight = group.childForceExpandHeight;
+                Kill(group, undo);
+                var le = target.GetComponent<LayoutElement>();
+                if (le == null) le = AddComp<LayoutElement>(target.gameObject, undo);
+                le.preferredHeight = height;
+            }
+
+            // 배경: 타이틀은 페이지 좌우 여백과 위 여백까지 덮는다.
+            var bg = UIKit.Rect("StickyBg", sticky);
+            bg.SetAsFirstSibling();
+            AddComp<LayoutElement>(bg.gameObject, undo).ignoreLayout = true;
+            bg.anchorMin = Vector2.zero;
+            bg.anchorMax = Vector2.one;
+            bool bleed = target.GetComponent<FullBleed>() != null;
+            float side = bleed ? 0f : PagePadding;
+            float top = above == null ? PagePadding : 0f;
+            bg.offsetMin = new Vector2(-side, 0f);
+            bg.offsetMax = new Vector2(side, top);
+            var bgImg = AddComp<Image>(bg.gameObject, undo);
+            bgImg.color = Theme.Bg;
+
+            MakeOverlay(sticky, 1, undo);
+
+            var s = AddComp<StickyInScroll>(target.gameObject, undo);
+            s.sticky = sticky;
+            s.above = above;
+            s.pinTop = above == null ? PagePadding : 0f;
+            return s;
+        }
+
+        /// <summary>Sticky 안 내용이 바뀌었을 때 바깥 자리 높이를 다시 맞춘다.</summary>
+        static void FitStickyHeight(RectTransform target, RectTransform sticky)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(sticky);
+            var le = target.GetComponent<LayoutElement>();
+            if (le != null) le.preferredHeight = LayoutUtility.GetPreferredHeight(sticky);
+        }
+
 #if UNITY_EDITOR
         /// <summary>
         /// 에디터 전용: 구운 UI의 배너를 양옆 미리보기 형태로 바꾸고, 배너 밑에 구분선 두 줄을 넣고, 안내 상자를 화면 양 끝까지 붙인다.
@@ -844,6 +970,27 @@ namespace Oripa.UI
 
         public RectTransform BakedCanvasRoot => canvasRoot;
 
+        /// <summary>에디터 전용: 구운 UI의 타이틀(Header)과 구분선+탭 줄(Dividers)을 스크롤해도 위에 붙어 있게 바꾼다. Undo 기록 포함.</summary>
+        public bool InstallStickyTop(out string message)
+        {
+            message = null;
+            if (!baked || canvasRoot == null) { message = "구운 UI가 없습니다."; return false; }
+            var header = FindChildRecursive(canvasRoot, "Header") as RectTransform;
+            var dividers = FindChildRecursive(canvasRoot, "Dividers") as RectTransform;
+            if (header == null) { message = "Header를 찾지 못했습니다."; return false; }
+            if (header.GetComponent<StickyInScroll>() != null && (dividers == null || dividers.GetComponent<StickyInScroll>() != null))
+            {
+                message = "이미 위에 고정되어 있습니다.";
+                return false;
+            }
+            var hs = MakeSticky(header, null, true);
+            if (dividers != null) MakeSticky(dividers, hs, true);
+            if (modalLayer != null) MakeOverlay(modalLayer, 10, true);
+            if (dividers == null) message = "구분선(Dividers)이 없어서 타이틀만 고정했습니다.";
+            return true;
+        }
+
+
         /// <summary>
         /// 에디터 전용: 구운 UI의 구분선 두 줄 사이에 카테고리 탭 바를 넣는다. 반환: 새 TabBar (이미 있거나 구분선이 없으면 null).
         /// </summary>
@@ -851,13 +998,15 @@ namespace Oripa.UI
         {
             if (!baked || canvasRoot == null) return null;
             var dividers = FindChildRecursive(canvasRoot, "Dividers");
-            if (dividers == null || dividers.Find("TabBar") != null) return null;
-            var line1 = dividers.Find("Line1");
-            var v = dividers.GetComponent<VerticalLayoutGroup>();
+            if (dividers == null || FindChildRecursive(dividers, "TabBar") != null) return null;
+            var holder = dividers.Find("Sticky") != null ? dividers.Find("Sticky") : dividers;
+            var line1 = holder.Find("Line1");
+            var v = holder.GetComponent<VerticalLayoutGroup>();
             if (v != null) v.spacing = 0;
-            var bar = BuildTabBar(dividers);
+            var bar = BuildTabBar(holder);
             bar.SetSiblingIndex(line1 != null ? line1.GetSiblingIndex() + 1 : 0);
             UIKit.ApplyMissingFonts(bar);
+            if (holder != dividers) FitStickyHeight((RectTransform)dividers, (RectTransform)holder);
             return bar.gameObject;
         }
 
@@ -1006,6 +1155,7 @@ namespace Oripa.UI
             if (existing != null) Destroy(existing.gameObject);
 
             var bg = UIKit.Panel(canvasRoot, "Toast", Theme.Text.WithAlpha(0.92f), UIKit.Px(8));
+            MakeOverlay(bg.rectTransform, 20, false);   // 위에 고정된 타이틀보다 위
             bg.raycastTarget = false;
             bg.rectTransform.Place(new Vector2(0.5f, 0), new Vector2(0, UIKit.Px(60)), new Vector2(UIKit.Px(360), UIKit.Px(44)));
             UIKit.Label(bg.transform, message, UIKit.Fs(14), Theme.Bg, TextAnchor.MiddleCenter);
