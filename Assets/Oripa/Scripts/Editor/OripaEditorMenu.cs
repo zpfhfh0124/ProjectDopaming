@@ -153,6 +153,30 @@ namespace Oripa.EditorTools
                       "페이지를 늘리려면 Page를 복제(Ctrl+D)하면 됩니다. 씬을 저장(Ctrl+S)하세요.");
         }
 
+        [MenuItem("Oripa/구운 UI: 배너 양옆 미리보기 + 구분선 + 꽉 찬 안내", priority = 15)]
+        public static void UpgradeBannerArea()
+        {
+            var app = FindApp();
+            if (app == null) return;
+            if (!app.IsBaked || app.BakedCanvasRoot == null)
+            {
+                Debug.LogWarning("[Oripa] 구운 UI가 없습니다. 코드 생성 방식에는 이미 들어 있어요.");
+                return;
+            }
+            Undo.RegisterFullObjectHierarchyUndo(app.BakedCanvasRoot.gameObject, "Oripa 배너 영역 정리");
+            if (!app.UpgradeBannerArea(out var dividers))
+            {
+                Debug.LogWarning("[Oripa] 가로 스크롤 배너가 없습니다. 먼저 'Oripa > 구운 UI: 가로 스크롤 배너 넣기'를 실행하세요.");
+                return;
+            }
+            if (dividers != null) Undo.RegisterCreatedObjectUndo(dividers, "Oripa 배너 영역 정리");
+            EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
+            app.RefreshPreview();
+            var size = GachaApp.BannerSize;
+            Debug.Log($"[Oripa] 배너 양옆에 이전/다음 페이지가 보이게 하고, 구분선 두 줄을 넣고, 안내 상자를 화면 양 끝까지 붙였습니다. " +
+                      $"배너 그림 크기: {size.x:0} x {size.y:0}. 씬을 저장(Ctrl+S)하세요.");
+        }
+
         [MenuItem("Oripa/테스트: 포인트 1,000,000 충전 (Play 중)", priority = 30)]
         public static void ChargeInPlay()
         {
