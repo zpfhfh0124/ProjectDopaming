@@ -281,10 +281,26 @@ namespace Oripa.UI
 
         void BuildHeader(Transform page)
         {
-            // h1 + 테마 전환
+            // 로고 + 테마 전환
             var top = UIKit.Rect("Header", page);
-            top.Layout(UIKit.Px(40));
-            UIKit.Label(top, "카드 뽑기 프로토타입", UIKit.Fs(22), Theme.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
+            top.Layout(UIKit.Px(56));
+            var logoTex = UIKit.LoadTexture("Branding/Logo");
+            if (logoTex != null)
+            {
+                var logo = UIKit.Rect("Logo", top);
+                logo.anchorMin = logo.anchorMax = new Vector2(0, 0.5f);
+                logo.pivot = new Vector2(0, 0.5f);
+                logo.sizeDelta = new Vector2(UIKit.Px(56), UIKit.Px(56));
+                logo.anchoredPosition = Vector2.zero;
+                var raw = logo.gameObject.AddComponent<RawImage>();
+                raw.texture = logoTex;
+                raw.raycastTarget = false;
+            }
+            else
+            {
+                // 로고 이미지가 없을 때만 글자로 대신한다.
+                UIKit.Label(top, "카드 뽑기", UIKit.Fs(22), Theme.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
+            }
             var themeBtn = UIKit.GhostButton(top, Theme.Dark ? "라이트" : "다크", Theme.Bg, ToggleTheme, UIKit.Fs(13));
             var trt = (RectTransform)themeBtn.transform;
             trt.anchorMin = trt.anchorMax = new Vector2(1, 0.5f);
