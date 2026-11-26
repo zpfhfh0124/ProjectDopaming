@@ -32,6 +32,7 @@ Unity 6.3 (URP, Input System) 프로젝트용 오리파 스타일 카드 뽑기 
 배너 (헤더 아래, 예전 포인트 줄 자리) — 가로 스크롤
 - 페이지 한 장 크기 934 x 300. 배너는 화면 양 끝까지 차고, 가운데 페이지 양옆에 이전/다음 페이지가 살짝 보입니다 (`GachaApp.BannerPeek`, `BannerGap`). `Banner > Pages > Page1~3` 각각의 Source Image에 그림을 넣고(Texture Type = Sprite (2D and UI)) `PageHint` 글자를 지웁니다.
 - 페이지 추가: Page를 복제(Ctrl+D). 빼기: 지우거나 끄기. 아래 점(Dots)은 Play 때 페이지 수만큼 자동으로 생깁니다.
+- 순환 구조: 마지막 다음은 처음, 처음 이전은 마지막으로 이어집니다 (Play 때 양 끝에 `LoopClone` 복제 페이지가 생김).
 - 손가락으로 밀면 한 페이지씩 붙고, 4초마다 자동으로 넘어갑니다 (`BannerCarousel.autoInterval`, 0이면 끔 — 이 값은 Debug 인스펙터에서 보임). 배너 위에서 세로로 끌면 화면 전체가 스크롤됩니다.
 - 이미 구운 UI에는 **Oripa > 구운 UI: 가로 스크롤 배너 넣기**. 포인트 줄(BalanceRow)이나 예전 단일 배너를 바꿉니다 (Ctrl+Z 가능).
 - 배너 밑에는 구분선 두 줄(`Dividers`)이 있고, 그 아래 안내 상자(`Note`)는 화면 양 끝까지 붙습니다 (`FullBleed` 컴포넌트).
