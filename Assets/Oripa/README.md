@@ -9,6 +9,16 @@ Unity 6.3 (URP, Input System) 프로젝트용 오리파 스타일 카드 뽑기 
 1. 메뉴 **Oripa > 프로토타입 씬 만들기** (이미 만들었다면 `Assets/Oripa/Scenes/GachaPrototype.unity` 를 열기)
 2. Game 뷰 해상도를 **1080x1920 (세로)** 로 맞추고 Play
 
+## Play 전에 Scene 뷰에서 미리 보기
+
+`GachaApp` 은 `[ExecuteAlways]` 라서 씬을 열기만 해도 Scene/Game 뷰에 UI가 그려집니다.
+
+- Scene 뷰 상단의 **2D** 버튼을 켜고, Hierarchy의 `GachaApp > GachaCanvas (미리보기)` 를 더블클릭하면 화면 전체가 보입니다.
+- 미리보기는 저장 데이터(PlayerPrefs)와 테마 설정을 읽어 그대로 보여 줍니다. 버튼은 Play 중에만 눌립니다.
+- 미리보기 오브젝트는 씬에 저장되지 않는 임시 오브젝트입니다 (회색 표시, 인스펙터 편집 불가). 화면 수정은 코드에서 합니다.
+- 코드를 고치면 컴파일 후 자동으로 다시 그려집니다. 바로 갱신하려면 **Oripa > 씬 뷰 미리보기 새로고침**.
+- 끄려면 GachaApp 인스펙터의 **Preview In Edit Mode** 체크 해제.
+
 ## 화면 (HTML과 같은 순서, 한 화면 스크롤)
 
 - 헤더: 제목, 보유 포인트 (시작 5,000pt), `+1,000,000pt 충전(데모)`, 라이트/다크 전환

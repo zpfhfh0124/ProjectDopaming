@@ -12,7 +12,11 @@ namespace Oripa.UI
     /// 앱 진입점. 빈 씬의 GameObject 하나에 붙이면 UI 전체를 코드로 만든다.
     /// 화면 구성은 HTML 프로토타입(카드 뽑기 프로토타입.html)을 따른다:
     /// 헤더(제목, 포인트, 충전) → 안내 → 팩 목록 → 보유 카드 → 푸터, 그리고 결과/확률 모달.
+    ///
+    /// [ExecuteAlways]: Play를 누르지 않아도 에디터(Scene/Game 뷰)에서 같은 화면을 미리 보여 준다.
+    /// 미리보기 UI는 씬에 저장되지 않는 임시 오브젝트(HideFlags.DontSave)라서 Play와 빌드에는 영향이 없다.
     /// </summary>
+    [ExecuteAlways]
     public sealed class GachaApp : MonoBehaviour
     {
         /// <summary>.w { max-width:960px; padding:16px } 를 1080 폭 세로 화면에 맞춘 값.</summary>
@@ -34,8 +38,17 @@ namespace Oripa.UI
         RectTransform modalLayer;
         Coroutine toastRoutine;
 
+        [Tooltip("Play 전에도 Scene/Game 뷰에 UI를 미리 보여 준다 (씬에는 저장되지 않음).")]
+        [SerializeField] bool previewInEditMode = true;
+
+        const string PreviewName = "GachaCanvas (미리보기)";
+
         void Awake()
         {
+            if (!Application.isPlaying) return; // 에디터 미리보기는 OnEnable에서 따로 만든다.
+
+            // 혹시 남아 있는 에디터 미리보기를 지우고 실제 화면을 만든다.
+            DestroyPreview();
             Application.targetFrameRate = 60;
             Theme.Apply(PlayerPrefs.GetInt(ThemePrefKey, 0) == 1);
             Catalog = GachaCatalog.CreateDefault();
@@ -44,6 +57,83 @@ namespace Oripa.UI
             EnsureEventSystem();
             BuildCanvas();
             Render();
+        }
+
+        // ───────────────────────── 에디터 미리보기 (Play 전)
+
+        void OnEnable()
+        {
+#if UNITY_EDITOR
+            if (Application.isPlaying) return;
+            // OnEnable 도중(스크립트 리로드, 씬 열기)에는 에셋 로드가 불안정할 수 있어 한 프레임 뒤에 만든다.
+            UnityEditor.EditorApplication.delayCall += DelayedPreview;
+#endif
+        }
+
+        void OnDisable()
+        {
+#if UNITY_EDITOR
+            if (Application.isPlaying) return;
+            UnityEditor.EditorApplication.delayCall -= DelayedPreview;
+            DestroyPreview();
+#endif
+        }
+
+#if UNITY_EDITOR
+        void OnValidate()
+        {
+            // 인스펙터에서 미리보기 체크를 바꿨을 때. OnValidate 안에서는 오브젝트를 지울 수 없어서 미룬다.
+            if (Application.isPlaying) return;
+            UnityEditor.EditorApplication.delayCall -= DelayedPreview;
+            UnityEditor.EditorApplication.delayCall += DelayedPreview;
+        }
+
+        void DelayedPreview()
+        {
+            if (this == null || Application.isPlaying) return; // 그 사이 삭제되었거나 Play에 들어간 경우
+            RefreshPreview();
+        }
+#endif
+
+        /// <summary>에디터에서 미리보기 UI를 지금 상태(저장 데이터, 테마)로 다시 만든다.</summary>
+        [ContextMenu("미리보기 새로고침")]
+        public void RefreshPreview()
+        {
+            if (Application.isPlaying) return;
+            DestroyPreview();
+            if (!previewInEditMode || !isActiveAndEnabled) return;
+
+            Theme.Apply(PlayerPrefs.GetInt(ThemePrefKey, 0) == 1);
+            Catalog = GachaCatalog.CreateDefault();
+            State = SaveSystem.Load();
+            Engine = new GachaEngine();
+            // EventSystem은 만들지 않는다 (씬에 저장되면 안 되고, 에디터에서는 클릭할 일이 없다).
+            BuildCanvas();
+            canvasGo.name = PreviewName;
+            Render();
+            MarkDontSave(canvasGo.transform);
+        }
+
+        static void MarkDontSave(Transform t)
+        {
+            t.gameObject.hideFlags = HideFlags.DontSave | HideFlags.NotEditable;
+            for (int i = 0; i < t.childCount; i++) MarkDontSave(t.GetChild(i));
+        }
+
+        void DestroyPreview()
+        {
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                var child = transform.GetChild(i).gameObject;
+                if (child.name != PreviewName) continue;
+                if (Application.isPlaying) { child.SetActive(false); Destroy(child); }
+                else DestroyImmediate(child);
+            }
+            if (!Application.isPlaying)
+            {
+                canvasGo = null;
+                canvasRoot = pageContent = modalLayer = null;
+            }
         }
 
         // ───────────────────────── 동작
