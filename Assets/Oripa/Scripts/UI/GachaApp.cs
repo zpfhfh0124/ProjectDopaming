@@ -296,9 +296,25 @@ namespace Oripa.UI
                 raw.texture = logoTex;
                 raw.raycastTarget = false;
             }
-            else
+
+            // 로고 오른쪽에 "도파냥" 글자 로고 (원본 비율 유지)
+            var wordTex = UIKit.LoadTexture("Branding/Wordmark");
+            if (wordTex != null)
             {
-                // 로고 이미지가 없을 때만 글자로 대신한다.
+                float h = UIKit.Px(48);
+                var word = UIKit.Rect("Wordmark", top);
+                word.anchorMin = word.anchorMax = new Vector2(0, 0.5f);
+                word.pivot = new Vector2(0, 0.5f);
+                word.sizeDelta = new Vector2(h * wordTex.width / wordTex.height, h);
+                word.anchoredPosition = new Vector2(logoTex != null ? UIKit.Px(56 + 8) : 0, 0);
+                var wraw = word.gameObject.AddComponent<RawImage>();
+                wraw.texture = wordTex;
+                wraw.raycastTarget = false;
+            }
+
+            if (logoTex == null && wordTex == null)
+            {
+                // 로고 이미지가 둘 다 없을 때만 글자로 대신한다.
                 UIKit.Label(top, "카드 뽑기", UIKit.Fs(22), Theme.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
             }
             var themeBtn = UIKit.GhostButton(top, Theme.Dark ? "라이트" : "다크", Theme.Bg, ToggleTheme, UIKit.Fs(13));
