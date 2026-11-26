@@ -32,7 +32,11 @@ namespace Oripa
             foreach (var p in packs)
             {
                 if (p.id != def.Id) continue;
-                if (def.Stock != null && (p.stock == null || p.stock.Length != GradeInfo.Count))
+                // JsonUtility는 null 배열을 빈 배열(길이 0)로 저장/복원한다.
+                // 확률 방식 팩은 stock이 null이어야 하므로 불러온 뒤 다시 맞춘다.
+                if (def.Stock == null)
+                    p.stock = null;
+                else if (p.stock == null || p.stock.Length != GradeInfo.Count)
                     p.stock = (int[])def.Stock.Clone();
                 return p;
             }
