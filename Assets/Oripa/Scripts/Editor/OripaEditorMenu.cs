@@ -177,6 +177,30 @@ namespace Oripa.EditorTools
                       $"배너 그림 크기: {size.x:0} x {size.y:0}. 씬을 저장(Ctrl+S)하세요.");
         }
 
+        [MenuItem("Oripa/구운 UI: 구분선 사이에 탭 바 넣기", priority = 16)]
+        public static void InstallTabBar()
+        {
+            var app = FindApp();
+            if (app == null) return;
+            if (!app.IsBaked)
+            {
+                Debug.LogWarning("[Oripa] 구운 UI가 없습니다. 코드 생성 방식에는 이미 들어 있어요.");
+                return;
+            }
+            Undo.RegisterFullObjectHierarchyUndo(app.BakedCanvasRoot.gameObject, "Oripa 탭 바");
+            var bar = app.InstallTabBar();
+            if (bar == null)
+            {
+                Debug.LogWarning("[Oripa] 이미 탭 바가 있거나 구분선(Dividers)이 없습니다. 구분선은 'Oripa > 구운 UI: 배너 양옆 미리보기 + 구분선 + 꽉 찬 안내'로 넣어요.");
+                return;
+            }
+            Undo.RegisterCreatedObjectUndo(bar, "Oripa 탭 바");
+            EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
+            Selection.activeGameObject = bar;
+            Debug.Log("[Oripa] 구분선 사이에 탭 바를 넣었습니다. 탭 이름은 TabBar > Viewport > Tabs > Tab > Label 글자를 바꾸고, " +
+                      "탭을 늘리려면 Tab을 복제(Ctrl+D)하세요. 처음 선택된 탭은 TabBar의 CategoryTabs > Selected. 씬을 저장(Ctrl+S)하세요.");
+        }
+
         [MenuItem("Oripa/테스트: 포인트 1,000,000 충전 (Play 중)", priority = 30)]
         public static void ChargeInPlay()
         {

@@ -703,11 +703,11 @@ namespace Oripa.UI
             }
         }
 
-        /// <summary>배너 아래 구분선 두 줄 (화면 양 끝까지).</summary>
+        /// <summary>배너 아래 구분선 두 줄 (화면 양 끝까지), 그 사이에 카테고리 탭 바.</summary>
         static RectTransform BuildDividers(Transform parent)
         {
             var box = UIKit.Rect("Dividers", parent);
-            UIKit.Vertical(box.gameObject, new RectOffset(0, 0, 0, 0), UIKit.Px(3));
+            UIKit.Vertical(box.gameObject, new RectOffset(0, 0, 0, 0), 0);
             box.gameObject.AddComponent<FullBleed>();   // 화면 양 끝까지
             for (int i = 0; i < 2; i++)
             {
@@ -716,8 +716,84 @@ namespace Oripa.UI
                 var img = line.gameObject.AddComponent<Image>();
                 img.color = Theme.Border;
                 img.raycastTarget = false;
+                if (i == 0) BuildTabBar(box);
             }
             return box;
+        }
+
+        public static readonly string[] DefaultTabs = { "홈", "포켓몬", "원피스", "하비", "피규어", "유희왕", "바이스 슈발츠" };
+        public static float TabBarHeight => UIKit.Px(44);
+
+        /// <summary>
+        /// 카테고리 탭 바: TabBar(가로 스크롤) > Viewport > Tabs > Tab(Label + Underline)...
+        /// 넘치면 가로로 밀 수 있다. 선택된 탭은 굵은 진한 글자 + 빨간 밑줄.
+        /// </summary>
+        static RectTransform BuildTabBar(Transform parent)
+        {
+            var bar = UIKit.Rect("TabBar", parent);
+            bar.Layout(TabBarHeight);
+            var hit = bar.gameObject.AddComponent<Image>();
+            hit.color = new Color(1f, 1f, 1f, 0f);   // 안 보이지만 끌기 입력은 받는다
+
+            var viewport = UIKit.Rect("Viewport", bar).Stretch();
+            viewport.gameObject.AddComponent<RectMask2D>();
+
+            var tabs = UIKit.Rect("Tabs", viewport);
+            tabs.anchorMin = new Vector2(0, 0);
+            tabs.anchorMax = new Vector2(0, 1);
+            tabs.pivot = new Vector2(0, 0.5f);
+            tabs.offsetMin = Vector2.zero;
+            tabs.offsetMax = Vector2.zero;
+            int pad = Mathf.RoundToInt(PagePadding - UIKit.Px(10));
+            var h = UIKit.Horizontal(tabs.gameObject, new RectOffset(pad, pad, 0, 0), 0);
+            h.childControlWidth = true;
+            h.childControlHeight = true;
+            h.childForceExpandWidth = false;
+            h.childForceExpandHeight = true;
+            tabs.gameObject.AddComponent<ContentSizeFitter>().horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            foreach (var name in DefaultTabs)
+            {
+                var tab = UIKit.Rect("Tab", tabs);
+                var tabHit = tab.gameObject.AddComponent<Image>();
+                tabHit.color = new Color(1f, 1f, 1f, 0f);
+                var th = UIKit.Horizontal(tab.gameObject, UIKit.Pad(0, UIKit.Px(10)), 0);
+                th.childControlWidth = true;
+                th.childControlHeight = true;
+                th.childForceExpandWidth = false;
+                th.childForceExpandHeight = true;
+
+                var label = UIKit.Label(tab, name, UIKit.Fs(15), Theme.Muted, TextAnchor.MiddleCenter);
+                label.name = "Label";
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                label.raycastTarget = false;
+
+                var line = UIKit.Rect("Underline", tab);
+                line.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+                line.anchorMin = new Vector2(0, 0);
+                line.anchorMax = new Vector2(1, 0);
+                line.pivot = new Vector2(0.5f, 0);
+                line.offsetMin = Vector2.zero;
+                line.offsetMax = new Vector2(0, UIKit.Px(2.5f));
+                var lineImg = line.gameObject.AddComponent<Image>();
+                lineImg.raycastTarget = false;
+            }
+
+            var scroll = bar.gameObject.AddComponent<HorizontalStrip>();
+            scroll.viewport = viewport;
+            scroll.content = tabs;
+            scroll.horizontal = true;
+            scroll.vertical = false;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 0f;
+
+            var ct = bar.gameObject.AddComponent<CategoryTabs>();
+            ct.tabs = tabs;
+            ct.selected = 0;
+            ct.activeColor = Theme.Text;
+            ct.inactiveColor = Theme.Muted;
+            ct.Apply();
+            return bar;
         }
 
         /// <summary>안내 상자를 화면 양 끝까지 붙인다: 좌우 테두리와 둥근 모서리를 없애고 위아래 테두리만 남긴다.</summary>
@@ -767,6 +843,24 @@ namespace Oripa.UI
         }
 
         public RectTransform BakedCanvasRoot => canvasRoot;
+
+        /// <summary>
+        /// 에디터 전용: 구운 UI의 구분선 두 줄 사이에 카테고리 탭 바를 넣는다. 반환: 새 TabBar (이미 있거나 구분선이 없으면 null).
+        /// </summary>
+        public GameObject InstallTabBar()
+        {
+            if (!baked || canvasRoot == null) return null;
+            var dividers = FindChildRecursive(canvasRoot, "Dividers");
+            if (dividers == null || dividers.Find("TabBar") != null) return null;
+            var line1 = dividers.Find("Line1");
+            var v = dividers.GetComponent<VerticalLayoutGroup>();
+            if (v != null) v.spacing = 0;
+            var bar = BuildTabBar(dividers);
+            bar.SetSiblingIndex(line1 != null ? line1.GetSiblingIndex() + 1 : 0);
+            UIKit.ApplyMissingFonts(bar);
+            return bar.gameObject;
+        }
+
 
         /// <summary>
         /// 에디터 전용: 구운 UI에 가로 스크롤 배너를 넣는다.
