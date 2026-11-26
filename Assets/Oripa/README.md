@@ -29,9 +29,11 @@ Unity 6.3 (URP, Input System) 프로젝트용 오리파 스타일 카드 뽑기 
    - `PointsText`, `CollectionTitle` 은 글자 크기, 색, 정렬을 고칠 수 있지만 내용은 실행할 때 바뀝니다.
 3. 처음 모양으로 다시 만들려면 같은 메뉴를 다시 실행, 코드 생성 방식으로 돌아가려면 **Oripa > 구운 UI 지우기**. 둘 다 Ctrl+Z로 되돌릴 수 있습니다.
 
-배너 (헤더 아래, 예전 포인트 줄 자리)
-- 크기 1032 x 344 (본문 폭, 3:1). 이미지를 Texture Type = Sprite (2D and UI) 로 가져와 `Banner` 의 Source Image에 넣고 `BannerHint` 글자는 지웁니다.
-- 이미 구운 UI에는 **Oripa > 구운 UI: 포인트 줄을 배너로 바꾸기** 로 BalanceRow를 지우고 Banner를 넣습니다 (Ctrl+Z 가능).
+배너 (헤더 아래, 예전 포인트 줄 자리) — 가로 스크롤
+- 페이지 한 장 크기 1032 x 344 (본문 폭, 3:1). `Banner > Pages > Page1~3` 각각의 Source Image에 그림을 넣고(Texture Type = Sprite (2D and UI)) `PageHint` 글자를 지웁니다.
+- 페이지 추가: Page를 복제(Ctrl+D). 빼기: 지우거나 끄기. 아래 점(Dots)은 Play 때 페이지 수만큼 자동으로 생깁니다.
+- 손가락으로 밀면 한 페이지씩 붙고, 4초마다 자동으로 넘어갑니다 (`BannerCarousel.autoInterval`, 0이면 끔 — 이 값은 Debug 인스펙터에서 보임). 배너 위에서 세로로 끌면 화면 전체가 스크롤됩니다.
+- 이미 구운 UI에는 **Oripa > 구운 UI: 가로 스크롤 배너 넣기**. 포인트 줄(BalanceRow)이나 예전 단일 배너를 바꿉니다 (Ctrl+Z 가능).
 - 포인트 표시와 충전 버튼은 빠졌습니다. 테스트 충전은 Play 중 **Oripa > 테스트: 포인트 1,000,000 충전**.
 
 코인 표시 (헤더 오른쪽 위)
