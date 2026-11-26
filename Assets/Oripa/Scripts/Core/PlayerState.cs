@@ -22,6 +22,11 @@ namespace Oripa
         public const int StartingPoints = 5000;
 
         public long points = StartingPoints;
+
+        /// <summary>헤더 오른쪽 위에 표시하는 코인 (골드 최대 5자리, 실버·브론즈 최대 2자리). 아직 얻는 방법은 없다.</summary>
+        public int gold;
+        public int silver;
+        public int bronze;
         public int nextUid;
         public int totalPulls;
         public List<PrizeCard> prizes = new List<PrizeCard>();

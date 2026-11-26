@@ -98,6 +98,31 @@ namespace Oripa.EditorTools
         [MenuItem("Oripa/UI를 씬에 굽기 (직접 편집)", true)]
         static bool BakeUIValidate() => !EditorApplication.isPlaying;
 
+        [MenuItem("Oripa/구운 UI에 코인 표시 추가", priority = 13)]
+        public static void AddCurrency()
+        {
+            var app = FindApp();
+            if (app == null) return;
+            if (!app.IsBaked)
+            {
+                Debug.LogWarning("[Oripa] 구운 UI가 없습니다. 코드 생성 방식에는 코인 표시가 이미 들어 있어요.");
+                return;
+            }
+            Undo.RegisterCompleteObjectUndo(app, "Oripa 코인 표시 추가");
+            var row = app.AddCurrencyToBakedHeader();
+            if (row == null)
+            {
+                Debug.LogWarning("[Oripa] Header를 찾지 못했거나 이미 Currency가 있습니다.");
+                return;
+            }
+            Undo.RegisterCreatedObjectUndo(row, "Oripa 코인 표시 추가");
+            EditorUtility.SetDirty(app);
+            EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
+            app.RefreshPreview();
+            Selection.activeGameObject = row;
+            Debug.Log("[Oripa] Header 오른쪽 위에 코인 표시를 추가했습니다. 위치를 조정하고 씬을 저장(Ctrl+S)하세요.");
+        }
+
         [MenuItem("Oripa/구운 UI 지우기 (코드 생성으로 되돌리기)", priority = 12)]
         public static void UnbakeUI()
         {

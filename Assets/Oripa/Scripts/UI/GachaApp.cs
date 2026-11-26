@@ -53,6 +53,10 @@ namespace Oripa.UI
         [SerializeField] Button chargeButton;
         [SerializeField] Button resetButton;
         [SerializeField] Button themeButton;
+        [Header("코인 표시 (헤더 오른쪽 위)")]
+        [SerializeField] Text goldText;
+        [SerializeField] Text silverText;
+        [SerializeField] Text bronzeText;
 
         public bool IsBaked => baked;
         bool LayoutReady => canvasRoot != null && packListSlot != null && collectionSlot != null;
@@ -161,6 +165,7 @@ namespace Oripa.UI
             canvasRoot = modalLayer = packListSlot = collectionSlot = null;
             pointsText = collectionTitle = null;
             chargeButton = resetButton = themeButton = null;
+            goldText = silverText = bronzeText = null;
         }
 
         public RectTransform BakedCanvas => baked ? canvasRoot : null;
@@ -231,6 +236,7 @@ namespace Oripa.UI
                 canvasRoot = modalLayer = packListSlot = collectionSlot = null;
                 pointsText = collectionTitle = null;
                 chargeButton = resetButton = themeButton = null;
+                goldText = silverText = bronzeText = null;
             }
         }
 
@@ -412,6 +418,9 @@ namespace Oripa.UI
 
             if (pointsText != null) pointsText.text = UIKit.Num(State.points) + " pt";
             if (collectionTitle != null) collectionTitle.text = $"보유 카드  ({State.prizes.Count}장)";
+            if (goldText != null) goldText.text = Mathf.Clamp(State.gold, 0, 99999).ToString();
+            if (silverText != null) silverText.text = Mathf.Clamp(State.silver, 0, 99).ToString();
+            if (bronzeText != null) bronzeText.text = Mathf.Clamp(State.bronze, 0, 99).ToString();
 
             ClearSlot(packListSlot);
             PackListScreen.Build(packListSlot, this, ContentWidth);
@@ -475,6 +484,8 @@ namespace Oripa.UI
                 trt.anchoredPosition = Vector2.zero;
             }
 
+            BuildCurrency(top, withThemeButton ? UIKit.Px(64 + 8) : 0f);
+
             // .bal : 둥근 알약 모양, 포인트 + 충전 버튼
             var balRow = UIKit.Rect("BalanceRow", page);
             balRow.Layout(UIKit.Px(52));
@@ -499,6 +510,86 @@ namespace Oripa.UI
             crt.offsetMin = new Vector2(-UIKit.Px(204), UIKit.Px(6));
             crt.offsetMax = new Vector2(-UIKit.Px(6), -UIKit.Px(6));
         }
+
+        /// <summary>
+        /// 헤더 오른쪽 위 코인 표시: [골드 숫자][골드 코인] [실버 숫자][실버 코인] [브론즈 숫자][브론즈 코인].
+        /// 숫자 칸은 골드 5자리, 실버·브론즈 2자리 폭으로 잡는다. rightInset: 오른쪽에서 비워 둘 폭 (테마 버튼).
+        /// </summary>
+        RectTransform BuildCurrency(Transform header, float rightInset)
+        {
+            float h = UIKit.Px(22);
+            var row = UIKit.Rect("Currency", header);
+            row.anchorMin = row.anchorMax = new Vector2(1, 1);
+            row.pivot = new Vector2(1, 1);
+            row.anchoredPosition = new Vector2(-rightInset, -UIKit.Px(4));
+            var hlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = UIKit.Px(3);
+            hlg.childAlignment = TextAnchor.MiddleRight;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = false;
+            var fit = row.gameObject.AddComponent<ContentSizeFitter>();
+            fit.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+            fit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            goldText = CurrencyItem(row, "Gold", "Branding/CoinGold", UIKit.Px(40), h, false);
+            silverText = CurrencyItem(row, "Silver", "Branding/CoinSilver", UIKit.Px(18), h, true);
+            bronzeText = CurrencyItem(row, "Bronze", "Branding/CoinBronze", UIKit.Px(18), h, true);
+            return row;
+        }
+
+        static Text CurrencyItem(RectTransform row, string name, string iconPath, float textWidth, float h, bool gapBefore)
+        {
+            if (gapBefore) UIKit.Rect("Gap", row).Layout(h, UIKit.Px(6));
+
+            var label = UIKit.Label(row, "0", UIKit.Fs(13), Theme.Text, TextAnchor.MiddleRight, FontStyle.Bold);
+            label.name = name + "Text";
+            label.horizontalOverflow = HorizontalWrapMode.Overflow;
+            label.Layout(h, textWidth);
+
+            var icon = UIKit.Rect(name + "Coin", row);
+            icon.Layout(h, h);
+            var tex = UIKit.LoadTexture(iconPath);
+            if (tex != null)
+            {
+                var raw = icon.gameObject.AddComponent<RawImage>();
+                raw.texture = tex;
+                raw.raycastTarget = false;
+            }
+            return label;
+        }
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// 에디터 전용: 이미 구운 UI의 Header에 코인 표시만 추가한다 (사용자가 고친 다른 부분은 그대로).
+        /// 이미 있으면 null.
+        /// </summary>
+        public GameObject AddCurrencyToBakedHeader()
+        {
+            if (!baked || canvasRoot == null) return null;
+            var header = FindChildRecursive(canvasRoot, "Header");
+            if (header == null) return null;
+            if (header.Find("Currency") != null) return null;
+            LoadData();
+            var row = BuildCurrency(header, 0f);
+            UIKit.ApplyMissingFonts(row);
+            // 숫자는 RefreshPreview / Play 때 Render가 채운다 (여기서 Render하면 미리보기 카드가 씬에 저장될 수 있음).
+            return row.gameObject;
+        }
+
+        static Transform FindChildRecursive(Transform t, string name)
+        {
+            for (int i = 0; i < t.childCount; i++)
+            {
+                var c = t.GetChild(i);
+                if (c.name == name) return c;
+                var r = FindChildRecursive(c, name);
+                if (r != null) return r;
+            }
+            return null;
+        }
+#endif
 
         static void Spacer(Transform parent, float height) => UIKit.Rect("Spacer", parent).Layout(height);
 
