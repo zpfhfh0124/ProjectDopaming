@@ -123,6 +123,45 @@ namespace Oripa.EditorTools
             Debug.Log("[Oripa] Header 오른쪽 위에 코인 표시를 추가했습니다. 위치를 조정하고 씬을 저장(Ctrl+S)하세요.");
         }
 
+        [MenuItem("Oripa/구운 UI: 포인트 줄을 배너로 바꾸기", priority = 14)]
+        public static void ReplaceBalanceWithBanner()
+        {
+            var app = FindApp();
+            if (app == null) return;
+            if (!app.IsBaked)
+            {
+                Debug.LogWarning("[Oripa] 구운 UI가 없습니다. 코드 생성 방식에는 이미 배너 자리가 들어 있어요.");
+                return;
+            }
+            Undo.RegisterCompleteObjectUndo(app, "Oripa 배너로 바꾸기");
+            var banner = app.ReplaceBalanceWithBanner(out var balanceRow);
+            if (banner == null)
+            {
+                Debug.LogWarning("[Oripa] BalanceRow를 찾지 못했거나 이미 Banner가 있습니다.");
+                return;
+            }
+            Undo.RegisterCreatedObjectUndo(banner, "Oripa 배너로 바꾸기");
+            app.ForgetBalanceReferences();
+            Undo.DestroyObjectImmediate(balanceRow);
+            EditorUtility.SetDirty(app);
+            EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
+            app.RefreshPreview();
+            Selection.activeGameObject = banner;
+            var size = GachaApp.BannerSize;
+            Debug.Log($"[Oripa] 포인트 줄을 지우고 배너 자리를 넣었습니다 ({size.x:0} x {size.y:0}). " +
+                      "이미지를 Sprite로 가져와 Banner의 Source Image에 넣고, BannerHint 글자는 지우세요. 씬을 저장(Ctrl+S)하세요.");
+        }
+
+        [MenuItem("Oripa/테스트: 포인트 1,000,000 충전 (Play 중)", priority = 30)]
+        public static void ChargeInPlay()
+        {
+            var app = Object.FindAnyObjectByType<GachaApp>();
+            if (app != null) app.Charge();
+        }
+
+        [MenuItem("Oripa/테스트: 포인트 1,000,000 충전 (Play 중)", true)]
+        static bool ChargeInPlayValidate() => EditorApplication.isPlaying;
+
         [MenuItem("Oripa/구운 UI 지우기 (코드 생성으로 되돌리기)", priority = 12)]
         public static void UnbakeUI()
         {
