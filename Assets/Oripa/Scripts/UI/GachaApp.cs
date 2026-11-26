@@ -374,11 +374,13 @@ namespace Oripa.UI
             modalLayer = UIKit.Rect("Modals", canvasRoot).Stretch();
 
             BuildHeader(page, !forBake);
+            BuildDividers(page);
 
-            // .note
+            // .note (화면 양 끝까지)
             var note = UIKit.BorderBox(page, "Note", Theme.Bg, Theme.Border, UIKit.Px(8));
             var noteOuter = note.transform.parent.GetComponent<Image>();
             UIKit.Vertical(noteOuter.gameObject, UIKit.Pad(3), 0);
+            ApplyNoteBleed(noteOuter.transform);
             UIKit.Vertical(note.gameObject, UIKit.Pad(UIKit.Px(10), UIKit.Px(14)), 0);
             UIKit.Label(note.transform,
                 "UI 프로토타입이에요. 실제 결제, 뽑기, 배송은 없고 포인트와 카드는 모두 가짜 데이터예요.",
@@ -570,8 +572,16 @@ namespace Oripa.UI
         }
 #endif
 
-        /// <summary>배너 권장 크기 (캔버스 단위 = 1080 폭 기준 픽셀). 폭은 본문 폭, 3:1 비율.</summary>
-        public static Vector2 BannerSize => new Vector2(ContentWidth, Mathf.Round(ContentWidth / 3f));
+        /// <summary>배너 양옆에 이전/다음 페이지가 보이는 폭 (페이지 사이 간격 제외).</summary>
+        public static float BannerPeek => UIKit.Px(20);
+        /// <summary>배너 페이지 사이 간격.</summary>
+        public static float BannerGap => UIKit.Px(8);
+        /// <summary>배너 페이지 바깥 여백 (화면 끝에서 가운데 페이지까지).</summary>
+        public static int BannerSidePad => Mathf.RoundToInt(BannerPeek + BannerGap);
+        public const float BannerHeight = 300f;
+
+        /// <summary>배너 한 장 크기 (캔버스 단위 = 1080 폭 기준 픽셀). 화면 폭에서 양옆 미리보기 자리를 뺀 폭.</summary>
+        public static Vector2 BannerSize => new Vector2(PageWidth - BannerSidePad * 2, BannerHeight);
 
         public const int DefaultBannerPages = 3;
 
@@ -644,10 +654,114 @@ namespace Oripa.UI
             carousel.decelerationRate = 0.135f;
             carousel.scrollSensitivity = 0f;
             carousel.dots = dots;
+            ApplyBannerPeek(root.rectTransform);
             return root.rectTransform;
         }
 
+        static void DestroyComponent(Component c)
+        {
+            if (c == null) return;
+            if (Application.isPlaying) Destroy(c); else DestroyImmediate(c);
+        }
+
+        /// <summary>
+        /// 배너를 화면 양 끝까지 늘리고, 가운데 페이지 양옆에 이전/다음 페이지가 살짝 보이게 한다.
+        /// 각 페이지는 둥근 모서리 한 장 (그림을 넣은 페이지는 그림 그대로).
+        /// </summary>
+        public static void ApplyBannerPeek(RectTransform banner)
+        {
+            if (banner.GetComponent<FullBleed>() == null) banner.gameObject.AddComponent<FullBleed>();
+            DestroyComponent(banner.GetComponent<Mask>());
+            if (banner.GetComponent<RectMask2D>() == null) banner.gameObject.AddComponent<RectMask2D>();
+            var bg = banner.GetComponent<Image>();
+            if (bg != null) bg.color = new Color(1f, 1f, 1f, 0f);   // 안 보이지만 끌기 입력은 받는다
+
+            var pages = banner.Find("Pages");
+            if (pages == null) return;
+            var h = pages.GetComponent<HorizontalLayoutGroup>();
+            int pad = BannerSidePad;
+            if (h != null)
+            {
+                h.padding = new RectOffset(pad, pad, 0, 0);
+                h.spacing = BannerGap;
+            }
+            float w = PageWidth - pad * 2;
+            for (int i = 0; i < pages.childCount; i++)
+            {
+                var page = pages.GetChild(i);
+                var le = page.GetComponent<LayoutElement>();
+                if (le == null) le = page.gameObject.AddComponent<LayoutElement>();
+                le.preferredWidth = w;
+                var img = page.GetComponent<Image>();
+                if (img != null && img.sprite == null) UIKit.SetRadius(img, UIKit.Px(14));
+                var hint = page.Find("PageHint");
+                if (hint != null)
+                {
+                    var t = hint.GetComponent<Text>();
+                    if (t != null) t.text = $"배너 {i + 1}  ({w:0} x {BannerHeight:0})";
+                }
+            }
+        }
+
+        /// <summary>배너 아래 구분선 두 줄.</summary>
+        static RectTransform BuildDividers(Transform parent)
+        {
+            var box = UIKit.Rect("Dividers", parent);
+            UIKit.Vertical(box.gameObject, new RectOffset(0, 0, 0, 0), UIKit.Px(3));
+            for (int i = 0; i < 2; i++)
+            {
+                var line = UIKit.Rect("Line" + (i + 1), box);
+                line.Layout(UIKit.Px(1));
+                var img = line.gameObject.AddComponent<Image>();
+                img.color = Theme.Border;
+                img.raycastTarget = false;
+            }
+            return box;
+        }
+
+        /// <summary>안내 상자를 화면 양 끝까지 붙인다: 좌우 테두리와 둥근 모서리를 없애고 위아래 테두리만 남긴다.</summary>
+        static void ApplyNoteBleed(Transform note)
+        {
+            if (note.GetComponent<FullBleed>() == null) note.gameObject.AddComponent<FullBleed>();
+            var outer = note.GetComponent<Image>();
+            if (outer != null) UIKit.SetRadius(outer, 0f);
+            var v = note.GetComponent<VerticalLayoutGroup>();
+            if (v != null) v.padding = new RectOffset(0, 0, v.padding.top, v.padding.bottom);
+            var fill = note.Find("Fill");
+            if (fill != null)
+            {
+                var img = fill.GetComponent<Image>();
+                if (img != null) UIKit.SetRadius(img, 0f);
+            }
+        }
+
 #if UNITY_EDITOR
+        /// <summary>
+        /// 에디터 전용: 구운 UI의 배너를 양옆 미리보기 형태로 바꾸고, 배너 밑에 구분선 두 줄을 넣고, 안내 상자를 화면 양 끝까지 붙인다.
+        /// 호출하는 쪽이 먼저 Undo.RegisterFullObjectHierarchyUndo(canvas)를 해 둔다. 반환: 새로 만든 구분선 (이미 있으면 null). 배너가 없으면 false.
+        /// </summary>
+        public bool UpgradeBannerArea(out GameObject newDividers)
+        {
+            newDividers = null;
+            if (!baked || canvasRoot == null) return false;
+            var banner = FindChildRecursive(canvasRoot, "Banner");
+            if (banner == null || banner.GetComponent<BannerCarousel>() == null) return false;
+            ApplyBannerPeek((RectTransform)banner);
+
+            if (FindChildRecursive(canvasRoot, "Dividers") == null)
+            {
+                var d = BuildDividers(banner.parent);
+                d.SetSiblingIndex(banner.GetSiblingIndex() + 1);
+                newDividers = d.gameObject;
+            }
+
+            var note = FindChildRecursive(canvasRoot, "Note");
+            if (note != null) ApplyNoteBleed(note);
+            return true;
+        }
+
+        public RectTransform BakedCanvasRoot => canvasRoot;
+
         /// <summary>
         /// 에디터 전용: 구운 UI에 가로 스크롤 배너를 넣는다.
         /// 포인트 줄(BalanceRow)이 있으면 그 자리에, 예전 단일 배너(Banner, 스크롤 없음)가 있으면 그것을 바꾼다
