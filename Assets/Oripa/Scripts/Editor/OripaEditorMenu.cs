@@ -220,7 +220,7 @@ namespace Oripa.EditorTools
             }
             EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
             if (!string.IsNullOrEmpty(msg)) Debug.LogWarning("[Oripa] " + msg);
-            Debug.Log("[Oripa] 타이틀은 항상 맨 위에, 탭 줄은 스크롤하다 타이틀 바로 밑에 붙도록 했습니다 (Play에서 확인). " +
+            Debug.Log("[Oripa] 타이틀은 항상 맨 위에, 탭 줄은 스크롤하다 타이틀 바로 밑에 붙도록 했습니다 (Play에서 확인). 이미 넣었던 씬은 새 방식으로 고쳤습니다. " +
                       "Header와 Dividers 안의 내용은 이제 각각 Sticky 아래에 있습니다. 씬을 저장(Ctrl+S)하세요.");
         }
 

@@ -370,14 +370,14 @@ namespace Oripa.UI
 
             UIKit.VerticalScroll(column, out var page);
             UIKit.Vertical(page.gameObject, UIKit.Pad(PagePadding), UIKit.Px(14));
+            var pinned = EnsurePinnedLayer(column, false);
 
             modalLayer = UIKit.Rect("Modals", canvasRoot).Stretch();
 
             BuildHeader(page, !forBake);
             var dividers = BuildDividers(page);
-            var headerSticky = MakeSticky((RectTransform)page.Find("Header"), null, false);
-            MakeSticky(dividers, headerSticky, false);
-            MakeOverlay(modalLayer, 10, false);
+            var headerSticky = MakeSticky((RectTransform)page.Find("Header"), null, pinned, false);
+            MakeSticky(dividers, headerSticky, pinned, false);
 
             // .note (화면 양 끝까지)
             var note = UIKit.BorderBox(page, "Note", Theme.Bg, Theme.Border, UIKit.Px(8));
@@ -852,26 +852,49 @@ namespace Oripa.UI
             DestroyComponent(c);
         }
 
-        /// <summary>그 위에 따로 그려지는 캔버스 (스크롤 내용 위, 모달 아래 순서를 맞춘다).</summary>
-        static void MakeOverlay(RectTransform rt, int order, bool undo)
+        /// <summary>스크롤 밖, 스크롤보다 위에 그려지는 고정 줄 층 (Column > Pinned). 없으면 만든다.</summary>
+        static RectTransform EnsurePinnedLayer(Transform column, bool undo)
         {
-            if (rt == null) return;
-            var c = rt.GetComponent<Canvas>();
-            if (c == null) c = AddComp<Canvas>(rt.gameObject, undo);
-            c.overrideSorting = true;
-            c.sortingOrder = order;
-            if (rt.GetComponent<GraphicRaycaster>() == null) AddComp<GraphicRaycaster>(rt.gameObject, undo);
+            var existing = column.Find("Pinned") as RectTransform;
+            if (existing != null) { existing.SetAsLastSibling(); return existing; }
+            var layer = UIKit.Rect("Pinned", column).Stretch();
+#if UNITY_EDITOR
+            if (undo && !Application.isPlaying) UnityEditor.Undo.RegisterCreatedObjectUndo(layer.gameObject, "Oripa 위에 고정");
+#endif
+            layer.SetAsLastSibling();
+            return layer;
+        }
+
+        /// <summary>예전 방식(따로 그리는 캔버스)으로 붙인 Canvas/GraphicRaycaster를 뗀다.</summary>
+        static void RemoveOverlay(Component c, bool undo)
+        {
+            if (c == null) return;
+            Kill(c.GetComponent<GraphicRaycaster>(), undo);
+            Kill(c.GetComponent<Canvas>(), undo);
         }
 
         /// <summary>
         /// target의 내용을 자식 Sticky로 옮기고 StickyInScroll을 붙인다. above가 없으면 지금 자리(페이지 위 여백)에 고정,
         /// 있으면 그 줄 바로 밑에 붙는다. 뒤가 비치지 않게 배경(StickyBg)을 깐다. 이미 되어 있으면 그대로 돌려준다.
         /// </summary>
-        static StickyInScroll MakeSticky(RectTransform target, StickyInScroll above, bool undo)
+        static StickyInScroll MakeSticky(RectTransform target, StickyInScroll above, RectTransform pinnedLayer, bool undo)
         {
             if (target == null) return null;
             var existing = target.GetComponent<StickyInScroll>();
-            if (existing != null) return existing;
+            if (existing != null)
+            {
+                // 예전 방식으로 만든 것 고치기
+                if (existing.sticky != null) RemoveOverlay(existing.sticky, undo);
+#if UNITY_EDITOR
+                if (undo && !Application.isPlaying) UnityEditor.Undo.RecordObject(existing, "Oripa 위에 고정");
+#endif
+                existing.above = above;
+                existing.alwaysPinned = above == null;
+                existing.fullWidth = target.GetComponent<FullBleed>() != null;
+                existing.pinnedLayer = pinnedLayer;
+                existing.pinTop = above == null ? PagePadding : 0f;
+                return existing;
+            }
 
             // 레이아웃 그룹이 있으면(구분선 묶음) Sticky로 옮기고, 바깥은 높이만 지킨다.
             var group = target.GetComponent<VerticalLayoutGroup>();
@@ -921,12 +944,13 @@ namespace Oripa.UI
             var bgImg = AddComp<Image>(bg.gameObject, undo);
             bgImg.color = Theme.Bg;
 
-            MakeOverlay(sticky, 1, undo);
-
             var s = AddComp<StickyInScroll>(target.gameObject, undo);
             s.sticky = sticky;
             s.above = above;
             s.pinTop = above == null ? PagePadding : 0f;
+            s.alwaysPinned = above == null;
+            s.fullWidth = bleed;
+            s.pinnedLayer = pinnedLayer;
             return s;
         }
 
@@ -978,14 +1002,12 @@ namespace Oripa.UI
             var header = FindChildRecursive(canvasRoot, "Header") as RectTransform;
             var dividers = FindChildRecursive(canvasRoot, "Dividers") as RectTransform;
             if (header == null) { message = "Header를 찾지 못했습니다."; return false; }
-            if (header.GetComponent<StickyInScroll>() != null && (dividers == null || dividers.GetComponent<StickyInScroll>() != null))
-            {
-                message = "이미 위에 고정되어 있습니다.";
-                return false;
-            }
-            var hs = MakeSticky(header, null, true);
-            if (dividers != null) MakeSticky(dividers, hs, true);
-            if (modalLayer != null) MakeOverlay(modalLayer, 10, true);
+            var column = FindChildRecursive(canvasRoot, "Column");
+            if (column == null) { message = "Column을 찾지 못했습니다."; return false; }
+            var layer = EnsurePinnedLayer(column, true);
+            var hs = MakeSticky(header, null, layer, true);
+            if (dividers != null) MakeSticky(dividers, hs, layer, true);
+            if (modalLayer != null) RemoveOverlay(modalLayer, true);
             if (dividers == null) message = "구분선(Dividers)이 없어서 타이틀만 고정했습니다.";
             return true;
         }
@@ -1155,7 +1177,6 @@ namespace Oripa.UI
             if (existing != null) Destroy(existing.gameObject);
 
             var bg = UIKit.Panel(canvasRoot, "Toast", Theme.Text.WithAlpha(0.92f), UIKit.Px(8));
-            MakeOverlay(bg.rectTransform, 20, false);   // 위에 고정된 타이틀보다 위
             bg.raycastTarget = false;
             bg.rectTransform.Place(new Vector2(0.5f, 0), new Vector2(0, UIKit.Px(60)), new Vector2(UIKit.Px(360), UIKit.Px(44)));
             UIKit.Label(bg.transform, message, UIKit.Fs(14), Theme.Bg, TextAnchor.MiddleCenter);
