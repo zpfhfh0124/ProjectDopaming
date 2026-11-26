@@ -37,9 +37,30 @@ namespace Oripa.EditorTools
             list.Insert(0, new EditorBuildSettingsScene(ScenePath, true));
             EditorBuildSettings.scenes = list.ToArray();
 
-            Debug.Log($"[Oripa] {ScenePath} 를 만들고 빌드 설정 첫 번째 씬으로 등록했습니다. Play를 누르세요. " +
+            Debug.Log($"[Oripa] {ScenePath} 를 만들고 빌드 설정 첫 번째 씬으로 등록했습니다. Scene 뷰에서 바로 UI가 보이고, Play를 누르면 동작합니다. " +
                       "Game 뷰 해상도는 1080x1920 (세로)을 권장합니다.");
         }
+
+        [MenuItem("Oripa/씬 뷰 미리보기 새로고침", priority = 10)]
+        public static void RefreshPreview()
+        {
+            var apps = Enumerable.Range(0, UnityEngine.SceneManagement.SceneManager.sceneCount)
+                .Select(UnityEngine.SceneManagement.SceneManager.GetSceneAt)
+                .Where(s => s.isLoaded)
+                .SelectMany(s => s.GetRootGameObjects())
+                .SelectMany(go => go.GetComponentsInChildren<GachaApp>())
+                .ToList();
+            if (apps.Count == 0)
+            {
+                Debug.LogWarning("[Oripa] 열린 씬에 GachaApp이 없습니다. 먼저 'Oripa > 프로토타입 씬 만들기'를 실행하세요.");
+                return;
+            }
+            foreach (var app in apps) app.RefreshPreview();
+            Debug.Log("[Oripa] 미리보기를 다시 만들었습니다. Scene 뷰에서 2D 모드를 켜고 GachaCanvas를 더블클릭하면 화면 전체가 보입니다.");
+        }
+
+        [MenuItem("Oripa/씬 뷰 미리보기 새로고침", true)]
+        static bool RefreshPreviewValidate() => !EditorApplication.isPlaying;
 
         [MenuItem("Oripa/확률 시뮬레이션", priority = 20)]
         public static void SimulateOdds()

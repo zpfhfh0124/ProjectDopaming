@@ -77,7 +77,8 @@ namespace Oripa.UI
                     // HTML과 같은 순서로 한글 폰트를 찾는다.
                     font = Font.CreateDynamicFontFromOSFont(
                         new[] { "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", "NanumGothic", "Arial" }, 32);
-                    if (font == null) font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                    if (font != null) font.hideFlags = HideFlags.DontSave;
+                    else font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
                 }
                 return font;
             }
@@ -109,8 +110,11 @@ namespace Oripa.UI
             }
             tex.SetPixels32(px);
             tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
+            tex.hideFlags = HideFlags.DontSave; // 에디터 미리보기에서 씬에 저장되거나 정리되지 않게
+            var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
                 SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));
+            sprite.hideFlags = HideFlags.DontSave;
+            return sprite;
         }
 
         // ───────────── 기본 요소
@@ -343,8 +347,12 @@ namespace Oripa.UI
             for (int i = t.childCount - 1; i >= 0; i--)
             {
                 var child = t.GetChild(i).gameObject;
-                child.SetActive(false);
-                Object.Destroy(child);
+                if (Application.isPlaying)
+                {
+                    child.SetActive(false);
+                    Object.Destroy(child);
+                }
+                else Object.DestroyImmediate(child); // 에디터 미리보기
             }
         }
 
