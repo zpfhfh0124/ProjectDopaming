@@ -84,10 +84,43 @@ namespace Oripa.UI
             }
         }
 
-        public static Sprite Rounded => rounded != null ? rounded : rounded = MakeRounded(96, RoundedRadius, false);
+        /// <summary>둥근 모서리 9-slice 스프라이트를 저장해 두는 Resources 경로 (씬에 구운 UI가 참조할 수 있도록).</summary>
+        public const string RoundedResourcePath = "UI/Rounded";
+        public const int RoundedTextureSize = 96;
+        public const int RoundedBorder = RoundedRadius;
+
+        /// <summary>
+        /// 에셋(Resources/UI/Rounded.png)이 있으면 그것을 쓰고, 없으면 코드로 만든다.
+        /// 씬에 저장되는 UI는 에셋 스프라이트를 참조해야 다시 열었을 때 모서리가 유지된다.
+        /// </summary>
+        public static Sprite Rounded
+        {
+            get
+            {
+                if (rounded == null) rounded = Resources.Load<Sprite>(RoundedResourcePath);
+                if (rounded == null) rounded = MakeRounded(RoundedTextureSize, RoundedRadius, false);
+                return rounded;
+            }
+        }
+
         public static Sprite Glow => glow != null ? glow : glow = MakeRounded(128, 64, true);
 
-        static Sprite MakeRounded(int size, int radius, bool soft)
+        /// <summary>캐시된 스프라이트를 버린다 (에디터에서 Rounded 에셋을 새로 만든 뒤 호출).</summary>
+        public static void ResetSpriteCache()
+        {
+            rounded = null;
+        }
+
+        /// <summary>폰트가 비어 있는 Text에 기본 한글 폰트를 넣는다 (OS 폰트는 씬에 저장되지 않기 때문).</summary>
+        public static void ApplyMissingFonts(Transform root)
+        {
+            if (root == null) return;
+            foreach (var t in root.GetComponentsInChildren<Text>(true))
+                if (t.font == null) t.font = Font;
+        }
+
+        /// <summary>둥근 모서리(또는 부드러운 빛) 흰색 텍스처를 만든다. 에디터의 에셋 생성에도 쓴다.</summary>
+        public static Texture2D MakeRoundedTexture(int size, int radius, bool soft)
         {
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
             {
@@ -110,6 +143,12 @@ namespace Oripa.UI
             }
             tex.SetPixels32(px);
             tex.Apply();
+            return tex;
+        }
+
+        static Sprite MakeRounded(int size, int radius, bool soft)
+        {
+            var tex = MakeRoundedTexture(size, radius, soft);
             tex.hideFlags = HideFlags.DontSave; // 에디터 미리보기에서 씬에 저장되거나 정리되지 않게
             var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
                 SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));

@@ -9,12 +9,14 @@ using UnityEngine.InputSystem.UI;
 namespace Oripa.UI
 {
     /// <summary>
-    /// 앱 진입점. 빈 씬의 GameObject 하나에 붙이면 UI 전체를 코드로 만든다.
-    /// 화면 구성은 HTML 프로토타입(카드 뽑기 프로토타입.html)을 따른다:
-    /// 헤더(제목, 포인트, 충전) → 안내 → 팩 목록 → 보유 카드 → 푸터, 그리고 결과/확률 모달.
+    /// 앱 진입점. 화면 구성은 HTML 프로토타입(카드 뽑기 프로토타입.html)을 따른다:
+    /// 헤더(로고, 포인트, 충전) → 안내 → 팩 목록 → 보유 카드 → 푸터, 그리고 결과/확률 모달.
     ///
-    /// [ExecuteAlways]: Play를 누르지 않아도 에디터(Scene/Game 뷰)에서 같은 화면을 미리 보여 준다.
-    /// 미리보기 UI는 씬에 저장되지 않는 임시 오브젝트(HideFlags.DontSave)라서 Play와 빌드에는 영향이 없다.
+    /// 두 가지 방식으로 동작한다.
+    /// 1) 코드 생성 (기본): 화면 전체를 코드로 만든다. 에디터에서는 저장되지 않는 미리보기(DontSave)로 보여 준다.
+    /// 2) 구운 UI (메뉴 Oripa > UI를 씬에 굽기): 고정된 화면(헤더, 포인트 줄, 안내, 제목, 푸터, 배경)을
+    ///    씬에 저장되는 진짜 오브젝트로 만든다. Scene 뷰에서 위치, 크기, 색, 글자를 직접 고칠 수 있다.
+    ///    팩 목록과 보유 카드는 데이터에 따라 바뀌므로 PackListSlot / CollectionSlot 안에 실행할 때 코드로 채운다.
     /// </summary>
     [ExecuteAlways]
     public sealed class GachaApp : MonoBehaviour
@@ -27,36 +29,79 @@ namespace Oripa.UI
         public static float ModalWidth => PageWidth - UIKit.Px(16) * 2;
 
         const string ThemePrefKey = "oripa.theme.dark";
+        const string PreviewName = "GachaCanvas (미리보기)";
+        const string BakedName = "GachaCanvas";
 
         public GachaCatalog Catalog { get; private set; }
         public PlayerState State { get; private set; }
         public GachaEngine Engine { get; private set; }
 
-        GameObject canvasGo;
-        RectTransform canvasRoot;
-        RectTransform pageContent;
-        RectTransform modalLayer;
-        Coroutine toastRoutine;
-
-        [Tooltip("Play 전에도 Scene/Game 뷰에 UI를 미리 보여 준다 (씬에는 저장되지 않음).")]
+        [Tooltip("Play 전에도 Scene/Game 뷰에 UI를 미리 보여 준다.")]
         [SerializeField] bool previewInEditMode = true;
 
-        const string PreviewName = "GachaCanvas (미리보기)";
+        [Header("구운 UI (Oripa > UI를 씬에 굽기 로 자동 연결)")]
+        [Tooltip("켜져 있으면 씬에 저장된 UI를 쓰고, 꺼져 있으면 화면 전체를 코드로 만든다.")]
+        [SerializeField] bool baked;
+        [SerializeField] RectTransform canvasRoot;
+        [SerializeField] RectTransform modalLayer;
+        [Tooltip("팩 카드가 실행 중에 이 안에 만들어진다. 직접 넣은 자식은 Play 때 지워진다.")]
+        [SerializeField] RectTransform packListSlot;
+        [Tooltip("보유 카드가 실행 중에 이 안에 만들어진다. 직접 넣은 자식은 Play 때 지워진다.")]
+        [SerializeField] RectTransform collectionSlot;
+        [SerializeField] Text pointsText;
+        [SerializeField] Text collectionTitle;
+        [SerializeField] Button chargeButton;
+        [SerializeField] Button resetButton;
+        [SerializeField] Button themeButton;
+
+        public bool IsBaked => baked;
+        bool LayoutReady => canvasRoot != null && packListSlot != null && collectionSlot != null;
+
+        Coroutine toastRoutine;
 
         void Awake()
         {
             if (!Application.isPlaying) return; // 에디터 미리보기는 OnEnable에서 따로 만든다.
 
-            // 혹시 남아 있는 에디터 미리보기를 지우고 실제 화면을 만든다.
-            DestroyPreview();
             Application.targetFrameRate = 60;
+            LoadData();
+            EnsureEventSystem();
+
+            if (baked)
+            {
+                if (!LayoutReady)
+                {
+                    Debug.LogError("[Oripa] 구운 UI의 연결이 끊겼습니다. 메뉴 Oripa > UI를 씬에 굽기 를 다시 실행하세요. 이번에는 코드로 화면을 만듭니다.");
+                    baked = false;
+                }
+                else
+                {
+                    UIKit.ApplyMissingFonts(canvasRoot);
+                    WireButtons();
+                    Render();
+                    return;
+                }
+            }
+
+            DestroyPreview();
+            BuildCanvas(false);
+            WireButtons();
+            Render();
+        }
+
+        void LoadData()
+        {
             Theme.Apply(PlayerPrefs.GetInt(ThemePrefKey, 0) == 1);
             Catalog = GachaCatalog.CreateDefault();
             State = SaveSystem.Load();
             Engine = new GachaEngine();
-            EnsureEventSystem();
-            BuildCanvas();
-            Render();
+        }
+
+        void WireButtons()
+        {
+            if (chargeButton != null) chargeButton.onClick.AddListener(Charge);
+            if (resetButton != null) resetButton.onClick.AddListener(ConfirmReset);
+            if (themeButton != null) themeButton.onClick.AddListener(ToggleTheme);
         }
 
         // ───────────────────────── 에디터 미리보기 (Play 전)
@@ -93,9 +138,35 @@ namespace Oripa.UI
             if (this == null || Application.isPlaying) return; // 그 사이 삭제되었거나 Play에 들어간 경우
             RefreshPreview();
         }
+
+        /// <summary>
+        /// 에디터 전용: 고정 화면을 씬에 저장되는 오브젝트로 만들고 이 컴포넌트에 연결한다.
+        /// 이미 구운 UI가 있으면 호출하는 쪽(OripaEditorMenu)이 먼저 지운다.
+        /// 반환값은 새로 만든 캔버스 (Undo 등록용).
+        /// </summary>
+        public GameObject BakeLayout()
+        {
+            DestroyPreview();
+            LoadData();
+            baked = true;
+            BuildCanvas(true);
+            UIKit.ApplyMissingFonts(canvasRoot);
+            return canvasRoot.gameObject;
+        }
+
+        /// <summary>에디터 전용: 구운 UI 연결을 끊는다 (캔버스 삭제는 호출하는 쪽이 Undo로 처리).</summary>
+        public void ClearBakedReferences()
+        {
+            baked = false;
+            canvasRoot = modalLayer = packListSlot = collectionSlot = null;
+            pointsText = collectionTitle = null;
+            chargeButton = resetButton = themeButton = null;
+        }
+
+        public RectTransform BakedCanvas => baked ? canvasRoot : null;
 #endif
 
-        /// <summary>에디터에서 미리보기 UI를 지금 상태(저장 데이터, 테마)로 다시 만든다.</summary>
+        /// <summary>에디터에서 미리보기를 지금 상태(저장 데이터, 테마)로 다시 만든다.</summary>
         [ContextMenu("미리보기 새로고침")]
         public void RefreshPreview()
         {
@@ -103,15 +174,25 @@ namespace Oripa.UI
             DestroyPreview();
             if (!previewInEditMode || !isActiveAndEnabled) return;
 
-            Theme.Apply(PlayerPrefs.GetInt(ThemePrefKey, 0) == 1);
-            Catalog = GachaCatalog.CreateDefault();
-            State = SaveSystem.Load();
-            Engine = new GachaEngine();
+            LoadData();
+            if (baked)
+            {
+                if (!LayoutReady) return;
+                // 구운 UI: 저장된 오브젝트는 그대로 두고, 팩/보유 카드만 저장되지 않는 미리보기로 채운다.
+                UIKit.ApplyMissingFonts(canvasRoot);
+                // 슬롯에 직접 넣어 둔 오브젝트가 있으면 그것은 건드리지 않고, 새로 만든 미리보기만 저장 제외로 표시한다.
+                int packBefore = packListSlot.childCount, collectionBefore = collectionSlot.childCount;
+                Render();
+                MarkNewChildrenDontSave(packListSlot, packBefore);
+                MarkNewChildrenDontSave(collectionSlot, collectionBefore);
+                return;
+            }
+
             // EventSystem은 만들지 않는다 (씬에 저장되면 안 되고, 에디터에서는 클릭할 일이 없다).
-            BuildCanvas();
-            canvasGo.name = PreviewName;
+            BuildCanvas(false);
+            canvasRoot.name = PreviewName;
             Render();
-            MarkDontSave(canvasGo.transform);
+            MarkDontSave(canvasRoot);
         }
 
         static void MarkDontSave(Transform t)
@@ -120,8 +201,24 @@ namespace Oripa.UI
             for (int i = 0; i < t.childCount; i++) MarkDontSave(t.GetChild(i));
         }
 
+        static void MarkNewChildrenDontSave(Transform t, int from)
+        {
+            for (int i = from; i < t.childCount; i++) MarkDontSave(t.GetChild(i));
+        }
+
         void DestroyPreview()
         {
+            if (baked)
+            {
+                // 구운 UI에서는 슬롯 안의 미리보기 카드만 지운다.
+                if (!Application.isPlaying)
+                {
+                    ClearSlot(packListSlot);
+                    ClearSlot(collectionSlot);
+                }
+                return;
+            }
+
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 var child = transform.GetChild(i).gameObject;
@@ -131,8 +228,28 @@ namespace Oripa.UI
             }
             if (!Application.isPlaying)
             {
-                canvasGo = null;
-                canvasRoot = pageContent = modalLayer = null;
+                canvasRoot = modalLayer = packListSlot = collectionSlot = null;
+                pointsText = collectionTitle = null;
+                chargeButton = resetButton = themeButton = null;
+            }
+        }
+
+        /// <summary>
+        /// 슬롯 비우기. Play 중에는 전부 지운다.
+        /// 에디터에서는 미리보기(DontSave)로 만든 것만 지워서, 실수로 넣은 오브젝트가 사라지지 않게 한다.
+        /// </summary>
+        static void ClearSlot(Transform slot)
+        {
+            if (slot == null) return;
+            if (Application.isPlaying)
+            {
+                UIKit.ClearChildren(slot);
+                return;
+            }
+            for (int i = slot.childCount - 1; i >= 0; i--)
+            {
+                var child = slot.GetChild(i).gameObject;
+                if ((child.hideFlags & HideFlags.DontSave) != 0) DestroyImmediate(child);
             }
         }
 
@@ -175,11 +292,16 @@ namespace Oripa.UI
 
         void ToggleTheme()
         {
+            // 테마 버튼은 코드 생성 방식에만 있다 (구운 UI의 색은 Scene에서 직접 정한다).
+            if (baked) return;
             Theme.Apply(!Theme.Dark);
             PlayerPrefs.SetInt(ThemePrefKey, Theme.Dark ? 1 : 0);
             PlayerPrefs.Save();
-            Destroy(canvasGo);
-            BuildCanvas();
+            var old = canvasRoot.gameObject;
+            old.SetActive(false);
+            Destroy(old);
+            BuildCanvas(false);
+            WireButtons();
             Render();
         }
 
@@ -213,9 +335,14 @@ namespace Oripa.UI
 #endif
         }
 
-        void BuildCanvas()
+        /// <summary>
+        /// 캔버스와 고정 화면(헤더, 포인트 줄, 안내, 제목, 푸터)을 만들고 참조를 연결한다.
+        /// 버튼 동작은 WireButtons()에서 연결한다 (씬에 저장된 UI도 같은 방식).
+        /// forBake: 씬에 굽는 경우. 테마 전환 버튼은 넣지 않는다.
+        /// </summary>
+        void BuildCanvas(bool forBake)
         {
-            canvasGo = new GameObject("GachaCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            var canvasGo = new GameObject(BakedName, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             canvasGo.layer = 5;
             canvasGo.transform.SetParent(transform, false);
             var canvas = canvasGo.GetComponent<Canvas>();
@@ -235,19 +362,12 @@ namespace Oripa.UI
             column.sizeDelta = new Vector2(PageWidth, 0);
             column.anchoredPosition = Vector2.zero;
 
-            UIKit.VerticalScroll(column, out pageContent);
-            UIKit.Vertical(pageContent.gameObject, UIKit.Pad(PagePadding), UIKit.Px(14));
+            UIKit.VerticalScroll(column, out var page);
+            UIKit.Vertical(page.gameObject, UIKit.Pad(PagePadding), UIKit.Px(14));
 
             modalLayer = UIKit.Rect("Modals", canvasRoot).Stretch();
-        }
 
-        /// <summary>HTML의 render(): 페이지 내용을 현재 상태로 다시 그린다 (스크롤 위치는 유지).</summary>
-        public void Render()
-        {
-            UIKit.ClearChildren(pageContent);
-            var page = pageContent;
-
-            BuildHeader(page);
+            BuildHeader(page, !forBake);
 
             // .note
             var note = UIKit.BorderBox(page, "Note", Theme.Bg, Theme.Border, UIKit.Px(8));
@@ -258,28 +378,49 @@ namespace Oripa.UI
                 "UI 프로토타입이에요. 실제 결제, 뽑기, 배송은 없고 포인트와 카드는 모두 가짜 데이터예요.",
                 UIKit.Fs(13), Theme.Muted);
 
-            PackListScreen.Build(page, this, ContentWidth);
+            // 팩 목록 자리 (내용은 Render에서 채운다)
+            packListSlot = UIKit.Rect("PackListSlot", page);
+            UIKit.Vertical(packListSlot.gameObject, new RectOffset(0, 0, 0, 0), UIKit.Px(14));
 
             // h2 보유 카드 (margin-top 28px)
             Spacer(page, UIKit.Px(14));
-            UIKit.Label(page, $"보유 카드  ({State.prizes.Count}장)", UIKit.Fs(17), Theme.Text, TextAnchor.LowerLeft, FontStyle.Bold)
-                .Layout(UIKit.Px(30));
+            collectionTitle = UIKit.Label(page, "보유 카드", UIKit.Fs(17), Theme.Text, TextAnchor.LowerLeft, FontStyle.Bold);
+            collectionTitle.name = "CollectionTitle";
+            collectionTitle.Layout(UIKit.Px(30));
 
-            CollectionScreen.Build(page, this, ContentWidth);
+            // 보유 카드 자리
+            collectionSlot = UIKit.Rect("CollectionSlot", page);
+            UIKit.Vertical(collectionSlot.gameObject, new RectOffset(0, 0, 0, 0), 0);
 
             // footer
             Spacer(page, UIKit.Px(14));
             UIKit.Label(page,
                 "환원율은 서비스 내 포인트 기준 계산값이에요. 실제 서비스로 만들기 전에 사행성 관련 법률 검토가 필요해요. " +
                 "만 19세 미만 이용 제한과 확률 공개 문구도 이 화면에 추가해야 해요.",
-                UIKit.Fs(12), Theme.Muted);
+                UIKit.Fs(12), Theme.Muted).name = "Footer";
 
-            var reset = UIKit.GhostButton(page, "데이터 초기화 (테스트)", Theme.Bg, ConfirmReset, UIKit.Fs(13));
-            reset.Layout(UIKit.Px(36));
+            resetButton = UIKit.GhostButton(page, "데이터 초기화 (테스트)", Theme.Bg, null, UIKit.Fs(13));
+            resetButton.name = "ResetButton";
+            resetButton.Layout(UIKit.Px(36));
             Spacer(page, UIKit.Px(24));
         }
 
-        void BuildHeader(Transform page)
+        /// <summary>HTML의 render(): 데이터에 따라 바뀌는 부분(포인트, 팩 목록, 보유 카드)만 다시 그린다.</summary>
+        public void Render()
+        {
+            if (!LayoutReady) return;
+
+            if (pointsText != null) pointsText.text = UIKit.Num(State.points) + " pt";
+            if (collectionTitle != null) collectionTitle.text = $"보유 카드  ({State.prizes.Count}장)";
+
+            ClearSlot(packListSlot);
+            PackListScreen.Build(packListSlot, this, ContentWidth);
+
+            ClearSlot(collectionSlot);
+            CollectionScreen.Build(collectionSlot, this, ContentWidth);
+        }
+
+        void BuildHeader(Transform page, bool withThemeButton)
         {
             // 로고 + 테마 전환
             var top = UIKit.Rect("Header", page);
@@ -297,19 +438,23 @@ namespace Oripa.UI
                 raw.raycastTarget = false;
             }
 
-            // 로고 오른쪽에 "도파냥" 글자 로고 (원본 비율 유지)
+            // 로고 오른쪽에 "도파냥" 글자 로고 (원본 비율 유지: 높이를 바꾸면 폭이 따라간다)
             var wordTex = UIKit.LoadTexture("Branding/Wordmark");
             if (wordTex != null)
             {
                 float h = UIKit.Px(48);
+                float aspect = (float)wordTex.width / wordTex.height;
                 var word = UIKit.Rect("Wordmark", top);
                 word.anchorMin = word.anchorMax = new Vector2(0, 0.5f);
                 word.pivot = new Vector2(0, 0.5f);
-                word.sizeDelta = new Vector2(h * wordTex.width / wordTex.height, h);
+                word.sizeDelta = new Vector2(h * aspect, h);
                 word.anchoredPosition = new Vector2(logoTex != null ? UIKit.Px(56 + 8) : 0, 0);
                 var wraw = word.gameObject.AddComponent<RawImage>();
                 wraw.texture = wordTex;
                 wraw.raycastTarget = false;
+                var fitter = word.gameObject.AddComponent<AspectRatioFitter>();
+                fitter.aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
+                fitter.aspectRatio = aspect;
             }
 
             if (logoTex == null && wordTex == null)
@@ -317,12 +462,18 @@ namespace Oripa.UI
                 // 로고 이미지가 둘 다 없을 때만 글자로 대신한다.
                 UIKit.Label(top, "카드 뽑기", UIKit.Fs(22), Theme.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
             }
-            var themeBtn = UIKit.GhostButton(top, Theme.Dark ? "라이트" : "다크", Theme.Bg, ToggleTheme, UIKit.Fs(13));
-            var trt = (RectTransform)themeBtn.transform;
-            trt.anchorMin = trt.anchorMax = new Vector2(1, 0.5f);
-            trt.pivot = new Vector2(1, 0.5f);
-            trt.sizeDelta = new Vector2(UIKit.Px(64), UIKit.Px(34));
-            trt.anchoredPosition = Vector2.zero;
+
+            themeButton = null;
+            if (withThemeButton)
+            {
+                themeButton = UIKit.GhostButton(top, Theme.Dark ? "라이트" : "다크", Theme.Bg, null, UIKit.Fs(13));
+                themeButton.name = "ThemeButton";
+                var trt = (RectTransform)themeButton.transform;
+                trt.anchorMin = trt.anchorMax = new Vector2(1, 0.5f);
+                trt.pivot = new Vector2(1, 0.5f);
+                trt.sizeDelta = new Vector2(UIKit.Px(64), UIKit.Px(34));
+                trt.anchoredPosition = Vector2.zero;
+            }
 
             // .bal : 둥근 알약 모양, 포인트 + 충전 버튼
             var balRow = UIKit.Rect("BalanceRow", page);
@@ -335,11 +486,13 @@ namespace Oripa.UI
             balOuter.offsetMin = Vector2.zero;
             balOuter.offsetMax = new Vector2(UIKit.Px(370), 0);
 
-            var pts = UIKit.Label(bal.transform, UIKit.Num(State.points) + " pt", UIKit.Fs(15), Theme.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
-            pts.rectTransform.Stretch(UIKit.Px(14), 0, UIKit.Px(210), 0);
+            pointsText = UIKit.Label(bal.transform, "0 pt", UIKit.Fs(15), Theme.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
+            pointsText.name = "PointsText";
+            pointsText.rectTransform.Stretch(UIKit.Px(14), 0, UIKit.Px(210), 0);
 
-            var charge = UIKit.Button(bal.transform, "+1,000,000pt 충전(데모)", Charge, UIKit.Fs(14));
-            var crt = (RectTransform)charge.transform;
+            chargeButton = UIKit.Button(bal.transform, "+1,000,000pt 충전(데모)", null, UIKit.Fs(14));
+            chargeButton.name = "ChargeButton";
+            var crt = (RectTransform)chargeButton.transform;
             crt.anchorMin = new Vector2(1, 0);
             crt.anchorMax = new Vector2(1, 1);
             crt.pivot = new Vector2(1, 0.5f);

@@ -62,6 +62,115 @@ namespace Oripa.EditorTools
         [MenuItem("Oripa/씬 뷰 미리보기 새로고침", true)]
         static bool RefreshPreviewValidate() => !EditorApplication.isPlaying;
 
+        // ───────────────────────── UI 굽기 (Scene 뷰에서 직접 편집)
+
+        const string RoundedAssetPath = "Assets/Oripa/Resources/" + UIKit.RoundedResourcePath + ".png";
+
+        [MenuItem("Oripa/UI를 씬에 굽기 (직접 편집)", priority = 11)]
+        public static void BakeUI()
+        {
+            var app = FindApp();
+            if (app == null) return;
+
+            if (app.IsBaked && app.BakedCanvas != null &&
+                !EditorUtility.DisplayDialog("UI를 다시 굽기",
+                    "이미 구운 UI가 있어요. 지우고 처음 모양으로 다시 만들까요?\n(Scene에서 고친 위치, 색, 글자는 사라져요. Ctrl+Z로 되돌릴 수 있어요.)",
+                    "다시 굽기", "취소"))
+                return;
+
+            EnsureRoundedSprite();
+
+            Undo.RegisterCompleteObjectUndo(app, "Oripa UI 굽기");
+            if (app.BakedCanvas != null) Undo.DestroyObjectImmediate(app.BakedCanvas.gameObject);
+            app.ClearBakedReferences();
+
+            var canvas = app.BakeLayout();
+            Undo.RegisterCreatedObjectUndo(canvas, "Oripa UI 굽기");
+            EditorUtility.SetDirty(app);
+            EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
+            app.RefreshPreview();
+            Selection.activeGameObject = canvas;
+
+            Debug.Log("[Oripa] UI를 씬에 구웠습니다. GachaApp > GachaCanvas 아래 오브젝트를 Scene 뷰에서 직접 옮기고 고칠 수 있어요. " +
+                      "팩 목록과 보유 카드는 PackListSlot / CollectionSlot 안에 실행할 때 채워집니다. 씬을 저장(Ctrl+S)하세요.");
+        }
+
+        [MenuItem("Oripa/UI를 씬에 굽기 (직접 편집)", true)]
+        static bool BakeUIValidate() => !EditorApplication.isPlaying;
+
+        [MenuItem("Oripa/구운 UI 지우기 (코드 생성으로 되돌리기)", priority = 12)]
+        public static void UnbakeUI()
+        {
+            var app = FindApp();
+            if (app == null || !app.IsBaked) return;
+            if (!EditorUtility.DisplayDialog("구운 UI 지우기",
+                    "씬에 저장된 UI를 지우고 코드로 만드는 방식으로 돌아갈까요? (Ctrl+Z로 되돌릴 수 있어요.)", "지우기", "취소"))
+                return;
+
+            Undo.RegisterCompleteObjectUndo(app, "Oripa 구운 UI 지우기");
+            if (app.BakedCanvas != null) Undo.DestroyObjectImmediate(app.BakedCanvas.gameObject);
+            app.ClearBakedReferences();
+            EditorUtility.SetDirty(app);
+            EditorSceneManager.MarkSceneDirty(app.gameObject.scene);
+            app.RefreshPreview();
+        }
+
+        [MenuItem("Oripa/구운 UI 지우기 (코드 생성으로 되돌리기)", true)]
+        static bool UnbakeUIValidate()
+        {
+            if (EditorApplication.isPlaying) return false;
+            var app = FindAppQuiet();
+            return app != null && app.IsBaked;
+        }
+
+        /// <summary>둥근 모서리 스프라이트를 에셋으로 만들어 둔다. 씬에 저장된 Image가 이 에셋을 참조한다.</summary>
+        static void EnsureRoundedSprite()
+        {
+            if (AssetDatabase.LoadAssetAtPath<Sprite>(RoundedAssetPath) != null) return;
+
+            var dir = System.IO.Path.GetDirectoryName(RoundedAssetPath);
+            if (!string.IsNullOrEmpty(dir)) System.IO.Directory.CreateDirectory(dir);
+
+            var tex = UIKit.MakeRoundedTexture(UIKit.RoundedTextureSize, UIKit.RoundedBorder, false);
+            System.IO.File.WriteAllBytes(RoundedAssetPath, tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+            AssetDatabase.ImportAsset(RoundedAssetPath, ImportAssetOptions.ForceSynchronousImport);
+
+            var importer = (TextureImporter)AssetImporter.GetAtPath(RoundedAssetPath);
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.spritePixelsPerUnit = 100;
+            importer.spriteBorder = new Vector4(UIKit.RoundedBorder, UIKit.RoundedBorder, UIKit.RoundedBorder, UIKit.RoundedBorder);
+            importer.mipmapEnabled = false;
+            importer.alphaIsTransparency = true;
+            importer.npotScale = TextureImporterNPOTScale.None;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.filterMode = FilterMode.Bilinear;
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            importer.SaveAndReimport();
+
+            UIKit.ResetSpriteCache();
+            Debug.Log("[Oripa] 둥근 모서리 스프라이트를 만들었습니다: " + RoundedAssetPath);
+        }
+
+        static GachaApp FindApp()
+        {
+            var app = FindAppQuiet();
+            if (app == null)
+                Debug.LogWarning("[Oripa] 열린 씬에 GachaApp이 없습니다. 먼저 'Oripa > 프로토타입 씬 만들기'를 실행하세요.");
+            return app;
+        }
+
+        static GachaApp FindAppQuiet()
+        {
+            return Enumerable.Range(0, UnityEngine.SceneManagement.SceneManager.sceneCount)
+                .Select(UnityEngine.SceneManagement.SceneManager.GetSceneAt)
+                .Where(s => s.isLoaded)
+                .SelectMany(s => s.GetRootGameObjects())
+                .SelectMany(go => go.GetComponentsInChildren<GachaApp>())
+                .FirstOrDefault();
+        }
+
         [MenuItem("Oripa/확률 시뮬레이션", priority = 20)]
         public static void SimulateOdds()
         {
